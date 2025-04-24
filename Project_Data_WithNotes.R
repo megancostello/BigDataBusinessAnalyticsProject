@@ -152,5 +152,7 @@ ggplot(merged_all_no_duplicates, aes(x = Released_Year, y = Gross)) +
     y = "Gross Funds ($)"
   ) +
   theme_minimal()  # Clean theme
+#Bryan Test Commmit
+
 
 
