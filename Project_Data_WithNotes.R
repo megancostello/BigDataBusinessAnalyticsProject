@@ -15,21 +15,22 @@ data2 <- read.csv("movies_updated.csv")
 data3 <- read.csv("movies_data.csv")
 
 # Standardize column names
-data1 <- data1 %>%
-  rename(
-    Series_Title = Series_Title,   # already correct
-    Released_Year = Released_Year,
-    Genre = Genre,
-    Runtime = Runtime,
-    IMDB_Rating = IMDB_Rating,
-    Director = Director,
-    No_of_Votes = No_of_Votes,
-    Gross = Gross,
-    Star1 = Star1,
-    Star2 = Star2,
-    Star3 = Star3,
-    Star4 = Star4
-  )
+#data1 <- data1 %>%
+ # rename(
+  #  Series_Title = Series_Title,   # already correct
+   # Released_Year = Released_Year,
+    #Genre = Genre,
+    #Runtime = Runtime,
+    #IMDB_Rating = IMDB_Rating,
+    #Director = Director,
+    #No_of_Votes = No_of_Votes,
+    #Gross = Gross,
+    #Star1 = Star1,
+    #Star2 = Star2,
+    #Star3 = Star3,
+    #Star4 = Star4
+  #)
+
 
 data2 <- data2 %>%
   rename(
@@ -44,8 +45,12 @@ data2 <- data2 %>%
     Star1 = star,
     Star2 = ,
     Star3 = ,
-    Star4 = 
+    Star4 = ,
+    budget = budget
   )
+
+data2$Runtime <- as.numeric(gsub("[^0-9]", "", data2$Runtime))
+data2$Runtime <- data2$Runtime/10
 
 data3 <- data3 %>%
   mutate(Gross = Earnings)
@@ -67,18 +72,19 @@ data3 <- data3 %>%
     Star1 = Actor.1,
     Star2 = Actor.2,
     Star3 = Actor.3,
-    Star4 = 
+    Star4 = ,
+    budget = Budget
   )
 
 #5.4.2025, need to remove Gross since that is actually not the revenue, but BoxOffice - Budget
 
-# Merge data1 and data2 on Series_Title
-merged_12 <- full_join(data1, data2, by = "Series_Title")
+# Merge data2 and data3 on Series_Title
+merged_23 <- full_join(data2, data3, by = "Series_Title")
 
 # Then merge the result with data3
-merged_all <- full_join(merged_12, data3, by = "Series_Title")
+#merged_all <- full_join(merged_12, data3, by = "Series_Title")
 
-merged_all <- merged_all %>%
+merged_all <- merged_23 %>%
   mutate(
     Released_Year = coalesce(
       if ("Released_Year.x" %in% names(.)) as.integer(Released_Year.x) else NA_integer_,
@@ -129,11 +135,16 @@ merged_all <- merged_all %>%
       if ("Star4.x" %in% names(.)) as.character(Star4.x) else NA_character_,
       if ("Star4.y" %in% names(.)) as.character(Star4.y) else NA_character_,
       if ("Star4"   %in% names(.)) as.character(Star4)   else NA_character_
+    ),
+    budget = coalesce(
+      if ("budget.x" %in% names(.)) as.numeric(budget.x) else NA_real_,
+      if ("budget.y" %in% names(.)) as.numeric(budget.y) else NA_real_,
+      if ("budget"   %in% names(.)) as.numeric(budget)   else NA_real_
     )
   ) %>%
   select(
     Series_Title, Released_Year, Genre, Runtime, IMDB_Rating, Director,
-    Gross, Star1, Star2, Star3, Star4
+    Gross, Star1, Star2, Star3, Star4, budget
   )
 
 
@@ -209,9 +220,9 @@ obs_count == nrow(Validation_Partition) + nrow(Training_Partition) + nrow(Testin
 #We now have: Training Partition 40%, Validation Partition 30%, and a Testing Partion 30%
 
 #Creation of a simple Regression model, y = mx + b
-M1 <- lm(Gross~IMDB_Rating + Released_Year + Runtime,Training_Partition)
+M1 <- lm(Gross~IMDB_Rating + Released_Year + Runtime + budget,Training_Partition)
 summary(M1)
-#Multiple R-squared:  0.1112
+#Multiple R-squared:  0.5595
 
 PRED_1_IN <- predict(M1, Training_Partition) 
 PRED_1_OUT <- predict(M1, Testing_Partition) 
@@ -256,46 +267,28 @@ Training_Partition$Log_Gross <- log(Training_Partition$Gross)
 Testing_Partition$Log_Gross <- log(Testing_Partition$Gross)
 
 # Now this will work
-M1_log <- lm(Log_Gross ~ IMDB_Rating + Released_Year + Runtime, data = Training_Partition)
+M1_log <- lm(Log_Gross ~ IMDB_Rating + Released_Year + Runtime + budget, data = Training_Partition)
 summary(M1_log)
-# Note: R² is low, model likely underfit, Multiple R-squared:  0.09304
+# Multiple R-squared: 0.3496
 
 #SQRT transform data
 Training_Partition$SQRT_Gross <- (Training_Partition$Gross)^.5
 Testing_Partition$SQRT_Gross <- (Testing_Partition$Gross)^.5
 
-M1_SQRT <- lm(SQRT_Gross ~ IMDB_Rating + Released_Year + Runtime, data = Training_Partition)
+M1_SQRT <- lm(SQRT_Gross ~ IMDB_Rating + Released_Year + Runtime + budget, data = Training_Partition)
 summary(M1_SQRT)
-#Multiple R-squared:  0.1249
+#Multiple R-squared:  0.6137
+
+Training_Partition$Cube_RT_Gross <- (Training_Partition$Gross)^(1/3)
+Testing_Partition$Cube_RT_Gross <- (Testing_Partition$Gross)^(1/3)
+
+M1_Cube_RT <- lm(Cube_RT_Gross ~ IMDB_Rating + Released_Year + Runtime + budget, data = Training_Partition)
+summary(M1_Cube_RT)
+
 
 #Decide on a set of metrics with your group that everyone will use when benchmarking the
 #models for the regression task for both in-sample and out-of-sample performance.
 #Test against other data
-
-# Filter partitions to only rows where Gross > 0
-Training_Partition <- Training_Partition[!is.na(Training_Partition$Gross) & Training_Partition$Gross > 0, ]
-Testing_Partition <- Testing_Partition[!is.na(Testing_Partition$Gross) & Testing_Partition$Gross > 0, ]
-
-# Log-transform the Gross column
-Training_Partition$Log_Gross <- log(Training_Partition$Gross)
-Testing_Partition$Log_Gross <- log(Testing_Partition$Gross)
-
-# Run linear regression with log(Gross) as the outcome
-M1_log <- lm(Log_Gross ~ IMDB_Rating + Released_Year + Runtime, data = Training_Partition)
-summary(M1_log) 
-
-# Plot the relationship between IMDB Rating and Log Gross
-plot(Training_Partition$IMDB_Rating, Training_Partition$Log_Gross,
-     xlab = "IMDB Rating", ylab = "Log Gross", main = "Log Gross vs IMDB Rating")
-abline(M1_log, col = "red")
-
-# Try square root transformation of Gross
-Training_Partition$SQRT_Gross <- sqrt(Training_Partition$Gross)
-Testing_Partition$SQRT_Gross <- sqrt(Testing_Partition$Gross)
-
-# Regression using sqrt(Gross)
-M1_SQRT <- lm(SQRT_Gross ~ IMDB_Rating + Released_Year + Runtime, data = Training_Partition)
-summary(M1_SQRT)
 
 # Generate predictions SQRT
 PRED_1_IN_SQRT <- predict(M1_SQRT, Training_Partition)
@@ -315,10 +308,11 @@ valid_idx_out <- complete.cases(PRED_1_OUT_vec_SQRT, Gross_OUT_vec_SQRT)
 # In-sample RMSE for the SQRT data
 RMSE_1_IN_SQRT <- sqrt(mean((PRED_1_IN_vec_SQRT[valid_idx_in]  - Gross_IN_vec_SQRT[valid_idx_in] )^2))
 RMSE_1_IN_SQRT
-#6194.202
+#3606.337
 
 # Out-of-sample RMSE for the SQRT data
 RMSE_1_OUT_SQRT <- sqrt(mean((PRED_1_OUT_vec_SQRT[valid_idx_out] - Gross_OUT_vec_SQRT[valid_idx_out])^2))
 RMSE_1_OUT_SQRT
-#5826.217
+#3613.986
+
 
