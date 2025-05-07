@@ -1,6 +1,7 @@
 # Load necessary libraries
 library(dplyr)   # For data manipulation
 library(ggplot2) # For plotting
+library(mgcv) #FOR gam()
 
 # List all files in the directory (useful for troubleshooting)
 all_files <- list.files(recursive = TRUE, full.names = TRUE)
@@ -155,6 +156,25 @@ any(duplicated(merged_all_no_duplicates$Series_Title))  # Should return FALSE
 
 Main_df <- merged_all_no_duplicates
 
+sum(is.na(Main_df$budget))          # Count of NA in budget
+sum(!is.finite(Main_df$budget))     # Count of Inf, -Inf, or NaN in budget
+sum(is.na(Main_df$Gross))           # Count of NA in Gross
+sum(!is.finite(Main_df$Gross))      # Count of Inf, -Inf, or NaN in Gross
+
+#below removes all NA values and Gross Values to make future calcs easier
+Main_df <- merged_all_no_duplicates[!is.na(Main_df$budget) & !is.na(Main_df$Gross), ]
+
+sum(is.na(Main_df$budget))          # Count of NA in budget
+sum(!is.finite(Main_df$budget))     # Count of Inf, -Inf, or NaN in budget
+sum(is.na(Main_df$Gross))           # Count of NA in Gross
+sum(!is.finite(Main_df$Gross))      # Count of Inf, -Inf, or NaN in Gross
+
+#add variables for Model Checking
+Main_df$budget2 <- Main_df$budget^2
+Main_df$budget3 <- Main_df$budget^3
+Main_df$budget4 <- Main_df$budget^.5
+
+  
 #THE ABOVE IS THE DATASET.
 
 #Question: Does the year affect the gross
@@ -184,7 +204,7 @@ ggplot(merged_all_no_duplicates, aes(x = Released_Year, y = Gross)) +
 #is making “apples to apples” comparisons. 
 
 #Update Runtime to make it an integer
-merged_all_no_duplicates$Runtime <- as.numeric(gsub(" min", "", merged_all_no_duplicates$Runtime))
+Main_df$Runtime <- as.numeric(gsub(" min", "", Main_df$Runtime))
 
 #Our dataset for now is: "merged_all_no_duplicates" 
 
@@ -193,7 +213,7 @@ p1<-.7 #70% FOR TRAINING / Validation, planning for 40% to train, 30% to validat
 p2<- 30/70 #this is the 30% of the the total data
 
 #NUMBER OF OBSERVATIONS IN DATAFRAME
-obs_count<-dim(merged_all_no_duplicates)[1]
+obs_count<-dim(Main_df)[1]
 
 #OF OBSERVATIONS IN THE TRAINING DATA (IN-SAMPLE DATA)
 #floor() ROUNDS DOWN TO THE NEAREST WHOLE NUMBER
@@ -203,8 +223,8 @@ training_size
 set.seed(12345)
 #RANDOMLY SHUFFLES THE ROW NUMBERS OF ORIGINAL DATASET
 train_ind <- sample(obs_count, size = training_size)
-Training <- merged_all_no_duplicates[train_ind, ] #PULLS RANDOM ROWS FOR TRAINING 70% which we need to break again
-Testing_Partition <- merged_all_no_duplicates[-train_ind, ] #This is our Testing Partition
+Training <- Main_df[train_ind, ] #PULLS RANDOM ROWS FOR TRAINING 70% which we need to break again
+Testing_Partition <- Main_df[-train_ind, ] #This is our Testing Partition
 
 
 #We will break the other into validation from the "Training"
@@ -219,8 +239,74 @@ Training_Partition <- Training[-validation_ind,] #Remainder go to Training
 obs_count == nrow(Validation_Partition) + nrow(Training_Partition) + nrow(Testing_Partition)
 #We now have: Training Partition 40%, Validation Partition 30%, and a Testing Partion 30%
 
+M1 <- lm(Gross~budget,Training_Partition)
+summary(M1)
+#Multiple R-squared:  0.5368
+
+M2 <- lm(Gross~budget + budget2,Training_Partition)
+summary(M2)
+#Multiple R-squared:  0.5334
+
+M3 <- lm(Gross~budget + budget2 + budget3,Training_Partition)
+summary(M3)
+#Multiple R-squared:  0.4415
+
+M4 <- lm(Gross~budget4,Training_Partition)
+summary(M4)
+#Multiple R-squared:  0.3863
+
+#MODEL 6: Y=s(x) SPLINE MODEL
+M5 <- gam(Gross ~ s(budget), data = Training_Partition, family = 'gaussian')
+summary(M5) #generates summary diagnostic output
+#R-sq.(adj) =   0.58
+
+#These are named nums, which cause issues
+Training_Partition$PRED_1_IN <- unname(predict(M1, Training_Partition))
+Testing_Partition$PRED_1_OUT <- unname(predict(M1, Testing_Partition))
+RMSE_1_In <- sqrt(mean((Training_Partition$PRED_1_IN - Training_Partition$Gross)^2))
+RMSE_1_In
+RMSE_1_Out <- sqrt(mean((Testing_Partition$PRED_1_OUT - Testing_Partition$Gross)^2))
+RMSE_1_Out
+
+Training_Partition$PRED_2_IN <- unname(predict(M2, Training_Partition))
+Testing_Partition$PRED_2_OUT <- unname(predict(M2, Testing_Partition))
+RMSE_2_In <- sqrt(mean((Training_Partition$PRED_2_IN - Training_Partition$Gross)^2))
+RMSE_2_In
+RMSE_2_Out <- sqrt(mean((Testing_Partition$PRED_2_OUT - Testing_Partition$Gross)^2))
+RMSE_2_Out
+
+Training_Partition$PRED_3_IN <- unname(predict(M3, Training_Partition))
+Testing_Partition$PRED_3_OUT <- unname(predict(M3, Testing_Partition))
+RMSE_3_In <- sqrt(mean((Training_Partition$PRED_3_IN - Training_Partition$Gross)^2))
+RMSE_3_In
+RMSE_3_Out <- sqrt(mean((Testing_Partition$PRED_3_OUT - Testing_Partition$Gross)^2))
+RMSE_3_Out
+
+Training_Partition$PRED_4_IN <- unname(predict(M4, Training_Partition))
+Testing_Partition$PRED_4_OUT <- unname(predict(M4, Testing_Partition))
+RMSE_4_In <- sqrt(mean((Training_Partition$PRED_4_IN - Training_Partition$Gross)^2))
+RMSE_4_In
+RMSE_4_Out <- sqrt(mean((Testing_Partition$PRED_4_OUT - Testing_Partition$Gross)^2))
+RMSE_4_Out
+
+Training_Partition$PRED_5_IN <- unname(predict(M5, Training_Partition))
+Testing_Partition$PRED_5_OUT <- unname(predict(M5, Testing_Partition))
+RMSE_5_In <- sqrt(mean((Training_Partition$PRED_5_IN - Training_Partition$Gross)^2))
+RMSE_5_In
+RMSE_5_Out <- sqrt(mean((Testing_Partition$PRED_5_OUT - Testing_Partition$Gross)^2))
+RMSE_5_Out
+
+TABLE_VAL <- as.table(matrix(c(RMSE_1_In, RMSE_2_In, RMSE_3_In, RMSE_4_In, RMSE_5_In, RMSE_1_Out, RMSE_2_Out, RMSE_3_Out, RMSE_4_Out, RMSE_5_Out), ncol=5, byrow=TRUE))
+colnames(TABLE_VAL) <- c('LINEAR', 'QUADRATIC', 'CUBIC', 'Square Root', 'SPLINE')
+rownames(TABLE_VAL) <- c('RMSE_IN', 'RMSE_OUT')
+TABLE_VAL #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
+
+
+#-------------------------------------------------------------------------------
+#The below is changing functions. I would suggest only using the above.
+
 #Creation of a simple Regression model, y = mx + b
-M1 <- lm(Gross~IMDB_Rating + Released_Year + Runtime + budget,Training_Partition)
+M1 <- lm(Gross~IMDB_Rating + Released_Year + Runtime + budget + budget2,Training_Partition)
 summary(M1)
 #Multiple R-squared:  0.5595
 
@@ -315,4 +401,19 @@ RMSE_1_OUT_SQRT <- sqrt(mean((PRED_1_OUT_vec_SQRT[valid_idx_out] - Gross_OUT_vec
 RMSE_1_OUT_SQRT
 #3613.986
 
+#Standard
+PRED_1_IN <- predict(M1, Training_Partition)
+PRED_1_OUT <- predict(M1, Testing_Partition) 
 
+PRED_1_IN_vec <- unname(PRED_1_IN)
+Gross_IN_vec <- unname(Training_Partition$Gross)
+PRED_1_OUT_vec <- unname(PRED_1_OUT)
+Gross_OUT_vec <- unname(Testing_Partition$Gross)
+
+RMSE_1_IN <- sqrt(mean((PRED_1_IN_vec[valid_idx_in]  - Gross_IN_vec[valid_idx_in] )^2))
+RMSE_1_IN
+#102909686 something is wrong here
+
+RMSE_1_OUT <- sqrt(mean((PRED_1_OUT_vec[valid_idx_out] - Gross_OUT_vec[valid_idx_out])^2))
+RMSE_1_OUT
+#91350964 something is wrong here
