@@ -50,7 +50,11 @@ data2 <- data2 %>%
 data3 <- data3 %>%
   mutate(Gross = Earnings)
 
-# Standardize column names in data3
+# Standardize column names in data3, we saw that Gross was different than the actual
+#Gross value, causing an issue with negative "Gross" values
+
+data3 <- select(data3, -Gross)
+
 data3 <- data3 %>%
   rename(
     Series_Title = Movie,   # already correct
@@ -59,12 +63,14 @@ data3 <- data3 %>%
     Runtime = Running.time,
     IMDB_Rating = IMDb.score,
     Director = Director,
-    Gross = Gross,
+    Gross = Box.Office,
     Star1 = Actor.1,
     Star2 = Actor.2,
     Star3 = Actor.3,
     Star4 = 
   )
+
+#5.4.2025, need to remove Gross since that is actually not the revenue, but BoxOffice - Budget
 
 # Merge data1 and data2 on Series_Title
 merged_12 <- full_join(data1, data2, by = "Series_Title")
@@ -155,6 +161,7 @@ ggplot(merged_all_no_duplicates, aes(x = Released_Year, y = Gross)) +
 #Bryan Test Commmit
 #5.4.2025
 
+#Code Chunk 6 For most of this to help
 #Regression
 #Begin by partitioning your original dataset for the regression task into three sets: a 
 #training partition and two holdout partitions.  One holdout partition will be for model 
@@ -165,6 +172,8 @@ ggplot(merged_all_no_duplicates, aes(x = Released_Year, y = Gross)) +
 #members start with the same training partition and same holdout partitions so everyone 
 #is making “apples to apples” comparisons. 
 
+#Update Runtime to make it an integer
+merged_all_no_duplicates$Runtime <- as.numeric(gsub(" min", "", merged_all_no_duplicates$Runtime))
 
 #Our dataset for now is: "merged_all_no_duplicates" 
 
@@ -200,45 +209,116 @@ obs_count == nrow(Validation_Partition) + nrow(Training_Partition) + nrow(Testin
 #We now have: Training Partition 40%, Validation Partition 30%, and a Testing Partion 30%
 
 #Creation of a simple Regression model, y = mx + b
-M1 <- lm(Gross~IMDB_Rating + Released_Year,Training_Partition)
+M1 <- lm(Gross~IMDB_Rating + Released_Year + Runtime,Training_Partition)
 summary(M1)
+#Multiple R-squared:  0.1112
+
 PRED_1_IN <- predict(M1, Training_Partition) 
 PRED_1_OUT <- predict(M1, Testing_Partition) 
 
+Training_Partition$PRED_1_IN_Num <- unname(PRED_1_IN)  #fix an issue where we had named numerics, causing NA for Pred_IN
+Training_Partition$Gross_Num <- (Training_Partition$Gross) 
+
 # Strip names before computing error
-PRED_1_OUT_vec <- unname(PRED_1_OUT)  #fix an issue where we had named numerics, causing NA for Pred_IN
-Gross_OUT_vec <- unname(Testing_Partition$Gross) #fix an issue where we had named numerics, causing NA for Pred_IN
+Testing_Partition$PRED_1_OUT_Num <- unname(PRED_1_OUT)  #fix an issue where we had class = named numerics, causing NA for Pred_IN
+Testing_Partition$Gross_Num <- (Testing_Partition$Gross) #fix an issue where we had class = named numerics, causing NA for Pred_IN
 
-valid_idx <- complete.cases(PRED_1_OUT_vec, Gross_OUT_vec) #fix an issue where RMSE was coming as NA since we had "NA" values
-RMSE_1_OUT <- sqrt(mean((PRED_1_OUT_vec[valid_idx] - Gross_OUT_vec[valid_idx])^2))
-RMSE_1_OUT
+#Checking class and lengths
+class(Testing_Partition$PRED_1_OUT_Num)
+class(Testing_Partition$Gross_Num)
+length(Testing_Partition$PRED_1_OUT_Num)
+length(Training_Partition$PRED_1_IN_Num)
 
-# Now do the RMSE
-RMSE_1_OUT <- sqrt(mean((PRED_1_OUT_vec - Gross_OUT_vec)^2))
-RMSE_1_OUT
-summary(M1)
+#We need to remove the NAs otherwise the RMSE comes out as nothing, we fill in the Gross_Nums here away
+#The complete.cases() function in R is used to identify rows in a data frame, matrix, or vector that do not contain
+#any missing values (NA). This function returns a logical vector indicating which cases are
+#complete.
+#IN SAMPLE CLEANING - Trainign DF, along with RMSE Calc
+valid_rows <- complete.cases(Training_Partition$PRED_1_IN_Num, Training_Partition$Gross_Num)
+RMSE_1_In <- sqrt(mean((Training_Partition$PRED_1_IN_Num[valid_rows] - Training_Partition$Gross_Num[valid_rows])^2))
 
-#Plot what we have.
+#OUT SAMPLE CLEANING - Testing DF, along with RMSE Calc
+valid_rows <- complete.cases(Testing_Partition$PRED_1_OUT_Num, Testing_Partition$Gross_Num)
+RMSE_1_Out <- sqrt(mean((Testing_Partition$PRED_1_OUT_Num[valid_rows] - Testing_Partition$Gross_Num[valid_rows])^2))
+
 plot(Training_Partition$IMDB_Rating, Training_Partition$Gross,
      xlab = "IMDB Rating", ylab = "Gross", main = "Gross vs IMDB Rating")
 abline(M1, col = "red")
 
-#Based off the summary of "M1" we see a R^2 of 0.068 which represents around 6.8% of the gross
-#Data may be showing such a large issue since we have a very very large Gross from Avatar.
-#We can try to visualize this as a percentage of change instead via log transform
+#We see RMSEs between the two, RMSE for out of sample is actually smaller than the In Sample, this is likely due to
+#James Cameron movies like Titanic and Avatar, huge outliers in our dataframes
+#---------------------------------------------------------------------------------
 
-# Filter Training and Testing to only rows where Gross > 0
-Training_Partition <- Training_Partition[!is.na(Training_Partition$Gross) & Training_Partition$Gross > 0, ]
-Testing_Partition <- Testing_Partition[!is.na(Testing_Partition$Gross) & Testing_Partition$Gross > 0, ]
+#log transform data
 
 # Now create the log variable
 Training_Partition$Log_Gross <- log(Training_Partition$Gross)
 Testing_Partition$Log_Gross <- log(Testing_Partition$Gross)
 
 # Now this will work
-M1_log <- lm(Log_Gross ~ IMDB_Rating + Released_Year, data = Training_Partition)
+M1_log <- lm(Log_Gross ~ IMDB_Rating + Released_Year + Runtime, data = Training_Partition)
 summary(M1_log)
+# Note: R² is low, model likely underfit, Multiple R-squared:  0.09304
 
-#Our data is stil wild, log transformation helped with reducing our R^2, only showing 7.6% now
-#We will need to include more information to see what decides the gross amount.
+#SQRT transform data
+Training_Partition$SQRT_Gross <- (Training_Partition$Gross)^.5
+Testing_Partition$SQRT_Gross <- (Testing_Partition$Gross)^.5
+
+M1_SQRT <- lm(SQRT_Gross ~ IMDB_Rating + Released_Year + Runtime, data = Training_Partition)
+summary(M1_SQRT)
+#Multiple R-squared:  0.1249
+
+#Decide on a set of metrics with your group that everyone will use when benchmarking the
+#models for the regression task for both in-sample and out-of-sample performance.
+#Test against other data
+
+# Filter partitions to only rows where Gross > 0
+Training_Partition <- Training_Partition[!is.na(Training_Partition$Gross) & Training_Partition$Gross > 0, ]
+Testing_Partition <- Testing_Partition[!is.na(Testing_Partition$Gross) & Testing_Partition$Gross > 0, ]
+
+# Log-transform the Gross column
+Training_Partition$Log_Gross <- log(Training_Partition$Gross)
+Testing_Partition$Log_Gross <- log(Testing_Partition$Gross)
+
+# Run linear regression with log(Gross) as the outcome
+M1_log <- lm(Log_Gross ~ IMDB_Rating + Released_Year + Runtime, data = Training_Partition)
+summary(M1_log) 
+
+# Plot the relationship between IMDB Rating and Log Gross
+plot(Training_Partition$IMDB_Rating, Training_Partition$Log_Gross,
+     xlab = "IMDB Rating", ylab = "Log Gross", main = "Log Gross vs IMDB Rating")
+abline(M1_log, col = "red")
+
+# Try square root transformation of Gross
+Training_Partition$SQRT_Gross <- sqrt(Training_Partition$Gross)
+Testing_Partition$SQRT_Gross <- sqrt(Testing_Partition$Gross)
+
+# Regression using sqrt(Gross)
+M1_SQRT <- lm(SQRT_Gross ~ IMDB_Rating + Released_Year + Runtime, data = Training_Partition)
+summary(M1_SQRT)
+
+# Generate predictions SQRT
+PRED_1_IN_SQRT <- predict(M1_SQRT, Training_Partition)
+PRED_1_OUT_SQRT <- predict(M1_SQRT, Testing_Partition)
+
+# Clean vectors for RMSE calculation (strip names, handle NA)
+# This changes "Named Num Class" to "num"
+PRED_1_IN_vec_SQRT <- unname(PRED_1_IN_SQRT)
+Gross_IN_vec_SQRT <- unname(Training_Partition$SQRT_Gross)
+PRED_1_OUT_vec_SQRT <- unname(PRED_1_OUT_SQRT)
+Gross_OUT_vec_SQRT <- unname(Testing_Partition$SQRT_Gross)
+
+#this removes all na cases, we cannot compute NA datapoints
+valid_idx_in <- complete.cases(PRED_1_IN_vec_SQRT,Gross_IN_vec_SQRT)
+valid_idx_out <- complete.cases(PRED_1_OUT_vec_SQRT, Gross_OUT_vec_SQRT)
+
+# In-sample RMSE for the SQRT data
+RMSE_1_IN_SQRT <- sqrt(mean((PRED_1_IN_vec_SQRT[valid_idx_in]  - Gross_IN_vec_SQRT[valid_idx_in] )^2))
+RMSE_1_IN_SQRT
+#6194.202
+
+# Out-of-sample RMSE for the SQRT data
+RMSE_1_OUT_SQRT <- sqrt(mean((PRED_1_OUT_vec_SQRT[valid_idx_out] - Gross_OUT_vec_SQRT[valid_idx_out])^2))
+RMSE_1_OUT_SQRT
+#5826.217
 
