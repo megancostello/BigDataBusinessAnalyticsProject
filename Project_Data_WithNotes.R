@@ -325,98 +325,126 @@ Training_Partition$Gross_Num <- (Training_Partition$Gross)
 Testing_Partition$PRED_1_OUT_Num <- unname(PRED_1_OUT)  #fix an issue where we had class = named numerics, causing NA for Pred_IN
 Testing_Partition$Gross_Num <- (Testing_Partition$Gross) #fix an issue where we had class = named numerics, causing NA for Pred_IN
 
-#Checking class and lengths
-class(Testing_Partition$PRED_1_OUT_Num)
-class(Testing_Partition$Gross_Num)
-length(Testing_Partition$PRED_1_OUT_Num)
-length(Training_Partition$PRED_1_IN_Num)
-
-#We need to remove the NAs otherwise the RMSE comes out as nothing, we fill in the Gross_Nums here away
-#The complete.cases() function in R is used to identify rows in a data frame, matrix, or vector that do not contain
-#any missing values (NA). This function returns a logical vector indicating which cases are
-#complete.
-#IN SAMPLE CLEANING - Trainign DF, along with RMSE Calc
-valid_rows <- complete.cases(Training_Partition$PRED_1_IN_Num, Training_Partition$Gross_Num)
-RMSE_1_In <- sqrt(mean((Training_Partition$PRED_1_IN_Num[valid_rows] - Training_Partition$Gross_Num[valid_rows])^2))
-RMSE_1_In
-
-#OUT SAMPLE CLEANING - Testing DF, along with RMSE Calc
-valid_rows <- complete.cases(Testing_Partition$PRED_1_OUT_Num, Testing_Partition$Gross_Num)
-RMSE_1_Out <- sqrt(mean((Testing_Partition$PRED_1_OUT_Num[valid_rows] - Testing_Partition$Gross_Num[valid_rows])^2))
-RMSE_1_Out
-
-#We see RMSEs between the two, RMSE for out of sample is actually smaller than the In Sample, this is likely due to
-#James Cameron movies like Titanic and Avatar, huge outliers in our dataframes
-#---------------------------------------------------------------------------------
-
-#log transform data
-
-# Now create the log variable
-Training_Partition$Log_Gross <- log(Training_Partition$Gross)
-Testing_Partition$Log_Gross <- log(Testing_Partition$Gross)
-
-# Now this will work
-M1_log <- lm(Log_Gross ~ IMDB_Rating + Released_Year + Runtime + budget, data = Training_Partition)
-summary(M1_log)
-# Multiple R-squared: 0.3496
-
-#SQRT transform data
-Training_Partition$SQRT_Gross <- (Training_Partition$Gross)^.5
-Testing_Partition$SQRT_Gross <- (Testing_Partition$Gross)^.5
-
-M1_SQRT <- lm(SQRT_Gross ~ IMDB_Rating + Released_Year + Runtime + budget, data = Training_Partition)
-summary(M1_SQRT)
-#Multiple R-squared:  0.6137
-
-Training_Partition$Cube_RT_Gross <- (Training_Partition$Gross)^(1/3)
-Testing_Partition$Cube_RT_Gross <- (Testing_Partition$Gross)^(1/3)
-
-M1_Cube_RT <- lm(Cube_RT_Gross ~ IMDB_Rating + Released_Year + Runtime + budget, data = Training_Partition)
-summary(M1_Cube_RT)
 
 
-#Decide on a set of metrics with your group that everyone will use when benchmarking the
-#models for the regression task for both in-sample and out-of-sample performance.
-#Test against other data
 
-# Generate predictions SQRT
-PRED_1_IN_SQRT <- predict(M1_SQRT, Training_Partition)
-PRED_1_OUT_SQRT <- predict(M1_SQRT, Testing_Partition)
 
-# Clean vectors for RMSE calculation (strip names, handle NA)
-# This changes "Named Num Class" to "num"
-PRED_1_IN_vec_SQRT <- unname(PRED_1_IN_SQRT)
-Gross_IN_vec_SQRT <- unname(Training_Partition$SQRT_Gross)
-PRED_1_OUT_vec_SQRT <- unname(PRED_1_OUT_SQRT)
-Gross_OUT_vec_SQRT <- unname(Testing_Partition$SQRT_Gross)
 
-#this removes all na cases, we cannot compute NA datapoints
-valid_idx_in <- complete.cases(PRED_1_IN_vec_SQRT,Gross_IN_vec_SQRT)
-valid_idx_out <- complete.cases(PRED_1_OUT_vec_SQRT, Gross_OUT_vec_SQRT)
 
-# In-sample RMSE for the SQRT data
-RMSE_1_IN_SQRT <- sqrt(mean((PRED_1_IN_vec_SQRT[valid_idx_in]  - Gross_IN_vec_SQRT[valid_idx_in] )^2))
-RMSE_1_IN_SQRT
-#3606.337
 
-# Out-of-sample RMSE for the SQRT data
-RMSE_1_OUT_SQRT <- sqrt(mean((PRED_1_OUT_vec_SQRT[valid_idx_out] - Gross_OUT_vec_SQRT[valid_idx_out])^2))
-RMSE_1_OUT_SQRT
-#3613.986
 
-#Standard
-PRED_1_IN <- predict(M1, Training_Partition)
-PRED_1_OUT <- predict(M1, Testing_Partition) 
 
-PRED_1_IN_vec <- unname(PRED_1_IN)
-Gross_IN_vec <- unname(Training_Partition$Gross)
-PRED_1_OUT_vec <- unname(PRED_1_OUT)
-Gross_OUT_vec <- unname(Testing_Partition$Gross)
 
-RMSE_1_IN <- sqrt(mean((PRED_1_IN_vec[valid_idx_in]  - Gross_IN_vec[valid_idx_in] )^2))
-RMSE_1_IN
-#102909686 something is wrong here
 
-RMSE_1_OUT <- sqrt(mean((PRED_1_OUT_vec[valid_idx_out] - Gross_OUT_vec[valid_idx_out])^2))
-RMSE_1_OUT
-#91350964 something is wrong here
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 
+# #Checking class and lengths
+# class(Testing_Partition$PRED_1_OUT_Num)
+# class(Testing_Partition$Gross_Num)
+# length(Testing_Partition$PRED_1_OUT_Num)
+# length(Training_Partition$PRED_1_IN_Num)
+# 
+# #We need to remove the NAs otherwise the RMSE comes out as nothing, we fill in the Gross_Nums here away
+# #The complete.cases() function in R is used to identify rows in a data frame, matrix, or vector that do not contain
+# #any missing values (NA). This function returns a logical vector indicating which cases are
+# #complete.
+# #IN SAMPLE CLEANING - Trainign DF, along with RMSE Calc
+# valid_rows <- complete.cases(Training_Partition$PRED_1_IN_Num, Training_Partition$Gross_Num)
+# RMSE_1_In <- sqrt(mean((Training_Partition$PRED_1_IN_Num[valid_rows] - Training_Partition$Gross_Num[valid_rows])^2))
+# RMSE_1_In
+# 
+# #OUT SAMPLE CLEANING - Testing DF, along with RMSE Calc
+# valid_rows <- complete.cases(Testing_Partition$PRED_1_OUT_Num, Testing_Partition$Gross_Num)
+# RMSE_1_Out <- sqrt(mean((Testing_Partition$PRED_1_OUT_Num[valid_rows] - Testing_Partition$Gross_Num[valid_rows])^2))
+# RMSE_1_Out
+# 
+# #We see RMSEs between the two, RMSE for out of sample is actually smaller than the In Sample, this is likely due to
+# #James Cameron movies like Titanic and Avatar, huge outliers in our dataframes
+# #---------------------------------------------------------------------------------
+# 
+# #log transform data
+# 
+# # Now create the log variable
+# Training_Partition$Log_Gross <- log(Training_Partition$Gross)
+# Testing_Partition$Log_Gross <- log(Testing_Partition$Gross)
+# 
+# # Now this will work
+# M1_log <- lm(Log_Gross ~ IMDB_Rating + Released_Year + Runtime + budget, data = Training_Partition)
+# summary(M1_log)
+# # Multiple R-squared: 0.3496
+# 
+# #SQRT transform data
+# Training_Partition$SQRT_Gross <- (Training_Partition$Gross)^.5
+# Testing_Partition$SQRT_Gross <- (Testing_Partition$Gross)^.5
+# 
+# M1_SQRT <- lm(SQRT_Gross ~ IMDB_Rating + Released_Year + Runtime + budget, data = Training_Partition)
+# summary(M1_SQRT)
+# #Multiple R-squared:  0.6137
+# 
+# Training_Partition$Cube_RT_Gross <- (Training_Partition$Gross)^(1/3)
+# Testing_Partition$Cube_RT_Gross <- (Testing_Partition$Gross)^(1/3)
+# 
+# M1_Cube_RT <- lm(Cube_RT_Gross ~ IMDB_Rating + Released_Year + Runtime + budget, data = Training_Partition)
+# summary(M1_Cube_RT)
+# 
+# 
+# #Decide on a set of metrics with your group that everyone will use when benchmarking the
+# #models for the regression task for both in-sample and out-of-sample performance.
+# #Test against other data
+# 
+# # Generate predictions SQRT
+# PRED_1_IN_SQRT <- predict(M1_SQRT, Training_Partition)
+# PRED_1_OUT_SQRT <- predict(M1_SQRT, Testing_Partition)
+# 
+# # Clean vectors for RMSE calculation (strip names, handle NA)
+# # This changes "Named Num Class" to "num"
+# PRED_1_IN_vec_SQRT <- unname(PRED_1_IN_SQRT)
+# Gross_IN_vec_SQRT <- unname(Training_Partition$SQRT_Gross)
+# PRED_1_OUT_vec_SQRT <- unname(PRED_1_OUT_SQRT)
+# Gross_OUT_vec_SQRT <- unname(Testing_Partition$SQRT_Gross)
+# 
+# #this removes all na cases, we cannot compute NA datapoints
+# valid_idx_in <- complete.cases(PRED_1_IN_vec_SQRT,Gross_IN_vec_SQRT)
+# valid_idx_out <- complete.cases(PRED_1_OUT_vec_SQRT, Gross_OUT_vec_SQRT)
+# 
+# # In-sample RMSE for the SQRT data
+# RMSE_1_IN_SQRT <- sqrt(mean((PRED_1_IN_vec_SQRT[valid_idx_in]  - Gross_IN_vec_SQRT[valid_idx_in] )^2))
+# RMSE_1_IN_SQRT
+# #3606.337
+# 
+# # Out-of-sample RMSE for the SQRT data
+# RMSE_1_OUT_SQRT <- sqrt(mean((PRED_1_OUT_vec_SQRT[valid_idx_out] - Gross_OUT_vec_SQRT[valid_idx_out])^2))
+# RMSE_1_OUT_SQRT
+# #3613.986
+# 
+# #Standard
+# PRED_1_IN <- predict(M1, Training_Partition)
+# PRED_1_OUT <- predict(M1, Testing_Partition) 
+# 
+# PRED_1_IN_vec <- unname(PRED_1_IN)
+# Gross_IN_vec <- unname(Training_Partition$Gross)
+# PRED_1_OUT_vec <- unname(PRED_1_OUT)
+# Gross_OUT_vec <- unname(Testing_Partition$Gross)
+# 
+# RMSE_1_IN <- sqrt(mean((PRED_1_IN_vec[valid_idx_in]  - Gross_IN_vec[valid_idx_in] )^2))
+# RMSE_1_IN
+# #102909686 something is wrong here
+# 
+# RMSE_1_OUT <- sqrt(mean((PRED_1_OUT_vec[valid_idx_out] - Gross_OUT_vec[valid_idx_out])^2))
+# RMSE_1_OUT
+# #91350964 something is wrong here
