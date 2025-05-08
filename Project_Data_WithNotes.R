@@ -308,9 +308,10 @@ Validation_Partition$PRED_2_Out <- unname(predict(M2,Validation_Partition))
 RMSE_2_Validate <- sqrt(mean((Validation_Partition$PRED_2_Out - Validation_Partition$Gross)^2))
 RMSE_2_Validate
 
+#MULTIVARIATE
 
 #Creation of a simple Regression model, y = mx + b
-M1 <- lm(Gross~IMDB_Rating + Released_Year + Runtime + budget + budget2,Training_Partition)
+M1 <- lm(Gross~IMDB_Rating + budget + budget2,Training_Partition)
 summary(M1)
 #Multiple R-squared:  0.5595
 
@@ -337,14 +338,12 @@ length(Training_Partition$PRED_1_IN_Num)
 #IN SAMPLE CLEANING - Trainign DF, along with RMSE Calc
 valid_rows <- complete.cases(Training_Partition$PRED_1_IN_Num, Training_Partition$Gross_Num)
 RMSE_1_In <- sqrt(mean((Training_Partition$PRED_1_IN_Num[valid_rows] - Training_Partition$Gross_Num[valid_rows])^2))
+RMSE_1_In
 
 #OUT SAMPLE CLEANING - Testing DF, along with RMSE Calc
 valid_rows <- complete.cases(Testing_Partition$PRED_1_OUT_Num, Testing_Partition$Gross_Num)
 RMSE_1_Out <- sqrt(mean((Testing_Partition$PRED_1_OUT_Num[valid_rows] - Testing_Partition$Gross_Num[valid_rows])^2))
-
-plot(Training_Partition$IMDB_Rating, Training_Partition$Gross,
-     xlab = "IMDB Rating", ylab = "Gross", main = "Gross vs IMDB Rating")
-abline(M1, col = "red")
+RMSE_1_Out
 
 #We see RMSEs between the two, RMSE for out of sample is actually smaller than the In Sample, this is likely due to
 #James Cameron movies like Titanic and Avatar, huge outliers in our dataframes
