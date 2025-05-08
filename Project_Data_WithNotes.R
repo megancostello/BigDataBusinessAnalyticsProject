@@ -300,10 +300,14 @@ TABLE_VAL <- as.table(matrix(c(RMSE_1_In, RMSE_2_In, RMSE_3_In, RMSE_4_In, RMSE_
 colnames(TABLE_VAL) <- c('LINEAR', 'QUADRATIC', 'CUBIC', 'Square Root', 'SPLINE')
 rownames(TABLE_VAL) <- c('RMSE_IN', 'RMSE_OUT')
 TABLE_VAL #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
+#The best in sample appears to be Spline, but best out of sample is Quadratic
 
+#use the validation sample to conduct a "Non-contaminated" R^2.
 
-#-------------------------------------------------------------------------------
-#The below is changing functions. I would suggest only using the above.
+Validation_Partition$PRED_2_Out <- unname(predict(M2,Validation_Partition))
+RMSE_2_Validate <- sqrt(mean((Validation_Partition$PRED_2_Out - Validation_Partition$Gross)^2))
+RMSE_2_Validate
+
 
 #Creation of a simple Regression model, y = mx + b
 M1 <- lm(Gross~IMDB_Rating + Released_Year + Runtime + budget + budget2,Training_Partition)
