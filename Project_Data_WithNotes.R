@@ -2,6 +2,7 @@
 library(dplyr)   # For data manipulation
 library(ggplot2) # For plotting
 library(mgcv) #FOR gam()
+library(tidyverse)
 
 # List all files in the directory (useful for troubleshooting)
 all_files <- list.files(recursive = TRUE, full.names = TRUE)
@@ -326,6 +327,89 @@ Testing_Partition$PRED_1_OUT_Num <- unname(PRED_1_OUT)  #fix an issue where we h
 Testing_Partition$Gross_Num <- (Testing_Partition$Gross) #fix an issue where we had class = named numerics, causing NA for Pred_IN
 
 
+
+
+
+
+
+#STEP 1: FORM THE INPUT MATRIX X:
+
+#STEP 1.1: MAKE A COLUMN OF ONES TO INCLUDE AS REGRESSORS FOR INTERCEPT
+col_of_ones <- rep(1, dim(Training_Partition)[1])
+
+#STEP 1.2: BIND COLUMN OF ONES WITH OTHER INPUT DATA COLUMNS
+#AND COERCE TO MATRIX OBJECT
+X <- as.matrix(cbind(col_of_ones, Training_Partition[,-1]))
+
+#STEP 2: FORM THE OUTPUT VECTOR y
+y <- Training_Partition[,1]
+
+# Convert to a numeric matrix
+X_numeric <- as.matrix(X)
+X_numeric <- apply(X_numeric, 2, as.numeric)  # Ensures each column is numeric
+
+# Now compute the pseudoinverse
+X_pseudo <- solve(t(X_numeric) %*% X_numeric) %*% t(X_numeric)
+
+#STEP 3: COMPUTE THE PSEUDOINVERSE MATRIX
+
+#STEP 4: MULTIPLY THE PSEUDOINVERSE MATRIX BY THE OUTPUT VECTOR
+Betas <- X_pseudo%*%y
+
+#############################
+#IMPLEMENTING REGULARIZATION#
+#############################
+
+#LET'S IMPLEMENT SOME REGULARIZATION USING THE L2 RIDGE PENALTY
+
+#SET UP GRID OF REGULARIZATION PARAMETER (LAMBDA) VALUES
+lambda <- seq(0, 2,.001)
+
+#INITIALIZE EMPTY MATRIX TO STORE ESTIMATED MODEL COEFFICIENTS FOR EACH LAMBDA
+BETA_RIDGE <- matrix(NA, nrow = dim(t(X)%*%X)[1], ncol=length(lambda))
+
+#INITIALIZE EMPTY MATRICES FOR STORING PREDICTION AND ERRORS
+PRED_IN <- matrix(NA, nrow = dim(training)[1], ncol=length(lambda))
+PRED_OUT <- matrix(NA, nrow = dim(holdout)[1], ncol=length(lambda))
+E_IN <- matrix(NA, nrow = 1, ncol=length(lambda))
+E_OUT <- matrix(NA, nrow = 1, ncol=length(lambda))
+
+for (i in 1:length(lambda)){
+  
+  #COMPUTE PSEUDOINVERSE SOLUTION
+  BETA_RIDGE[,i] <- solve(t(X)%*%X+lambda[i]*diag(dim(t(X)%*%X)[1]))%*%t(X)%*%y
+  
+  #COMPUTE PREDICTIONS IN AND OUT-OF-SAMPLE
+  PRED_IN[,i] <- X%*%BETA_RIDGE[,i]
+  PRED_OUT[,i] <- X_holdout%*%BETA_RIDGE[,i]
+  
+  #COMPUTE PREDICTION ERRORS (MSE) IN AND OUT-OF-SAMPLE
+  E_IN[i] <- sqrt(mean((y-PRED_IN[,i])^2))
+  E_OUT[i] <- sqrt(mean((y_holdout-PRED_OUT[,i])^2))
+}
+
+#STORE ERRORS VS. LAMBDAS IN SEPARATE DATAFRAMES
+df_IN <- data.frame(cbind(Error=as.numeric(E_IN), Lambda=lambda))
+df_OUT <- data.frame(cbind(Error=as.numeric(E_OUT), Lambda=lambda))
+
+ggplot(df_IN, aes(y=Error, x=Lambda)) +
+  geom_line(color='blue') +
+  geom_line(data=df_OUT, color='red') +
+  ggtitle("E_IN & E_OUT VS. REGULARIZATION PARAMETER (LAMBDA)") +
+  theme(plot.title = element_text(hjust = .5))
+
+#REPORT MINIMUM E_OUT ESTIMATE FROM BEST REGULARIZED MODEL
+(min(df_OUT$Error))
+
+#RECOVER OPTIMAL LAMBDA
+(Opt_Lambda <- df_OUT$Lambda[which.min(df_OUT$Error)])
+
+#REPLOT WITH MINIMUM ERROR IDENTIFIED
+ggplot(df_OUT, aes(y=Error, x=Lambda)) +
+  geom_line(color='red') +
+  geom_vline(xintercept=Opt_Lambda, color='red', lty=2) +
+  ggtitle("E_OUT VS. REGULARIZATION PARAMETER (LAMBDA)") +
+  theme(plot.title = element_text(hjust = .5))
 
 
 
