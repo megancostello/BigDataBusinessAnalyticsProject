@@ -174,6 +174,10 @@ sum(!is.finite(Main_df$Gross))      # Count of Inf, -Inf, or NaN in Gross
 Main_df$budget2 <- Main_df$budget^2
 Main_df$budget3 <- Main_df$budget^3
 Main_df$budget4 <- Main_df$budget^.5
+Main_df$budgetLog <- log(Main_df$budget)
+
+#clean up budgetLog
+Main_df$budgetLog[Main_df$budgetLog == -Inf] <- 0
 
 # view top three genres
 unique(Main_df$Genre)
@@ -330,16 +334,19 @@ RMSE_2_Validate
 #    5. MULTIVARIATE        #
 #############################
 
-# ====== 5a linear transformations ================================
+# ====== 5a linear model ================================
 MT0 <- lm(Gross~IMDB_Rating + budget + Action + Comedy + Drama + Horror,Training_Partition)
 summary(MT0)
+#Multiple R-squared:  0.559
+
+# ====== 5b linear model ================================
 
 
-# ====== INCLUDES TRANSFORMATIONS budget2 ================================
+# ====== 5c model includes transformations budget2 ================================
 #Creation of a simple Regression model, y = mx + b
-MT1 <- lm(Gross~IMDB_Rating + budget + budget2,Training_Partition)
+MT1 <- lm(Gross~IMDB_Rating + budget + budget2 + budget3 + Action + Drama + Horror, Training_Partition)
 summary(MT1)
-#Multiple R-squared:  0.5595
+#Multiple R-squared:  0.5693
 
 PRED_1_IN <- predict(MT1, Training_Partition) 
 PRED_1_OUT <- predict(MT1, Testing_Partition) 
@@ -373,10 +380,10 @@ y <- Training_Partition[,1]
 X_numeric <- as.matrix(X)
 X_numeric <- apply(X_numeric, 2, as.numeric)  # Ensures each column is numeric
 
+#STEP 3: COMPUTE THE PSEUDOINVERSE MATRIX
 # Now compute the pseudoinverse
 X_pseudo <- solve(t(X_numeric) %*% X_numeric) %*% t(X_numeric)
-
-#STEP 3: COMPUTE THE PSEUDOINVERSE MATRIX
+# X_pseudo <- solve(t(X)%*%X)%*%t(X)
 
 #STEP 4: MULTIPLY THE PSEUDOINVERSE MATRIX BY THE OUTPUT VECTOR
 Betas <- X_pseudo%*%y
