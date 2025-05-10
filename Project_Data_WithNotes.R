@@ -380,6 +380,67 @@ RMSE_1_In
 RMSE_1_Out <- sqrt(mean((Testing_Partition$PRED_1_OUT_Num - Testing_Partition$Gross_Num)^2))
 RMSE_1_Out
 
+# ====== 5d SVM ==========================================================
+library(e1071) #SVM LIBRARY
+
+svm_training <- Training_Partition[, c("Gross", "IMDB_Rating", "budget", "budget2")]
+svm_testing <- Testing_Partition[, c("Gross", "IMDB_Rating", "budget", "budget2")]
+# svm_training$Gross <- log(svm_training$Gross)
+# svm_training$budget <- log(svm_training$budget)
+# svm_training$budget2 <- log(svm_training$budget2)
+# 
+# svm_testing$Gross <- log(svm_testing$Gross)
+# svm_testing$budget <- log(svm_testing$budget)
+# svm_testing$budget2 <- log(svm_testing$budget2)
+
+#BUILD SVM CLASSIFIER
+  # hard to get it to run without hitting max iterations, decreased cost and set SCALE to TRUE, kernel = linear
+SVM_Model<- svm(Gross~IMDB_Rating + budget + budget2, 
+                data = svm_training, 
+                type = "eps-regression", #set to "eps-regression" for numeric prediction
+                kernel = "linear",
+                cost=0.1,                   #REGULARIZATION PARAMETER
+                gamma = 1/(ncol(svm_training)-1), #DEFAULT KERNEL PARAMETER
+                coef0 = 0,                    #DEFAULT KERNEL PARAMETER
+                degree=2,                     #POLYNOMIAL KERNEL PARAMETER
+                scale = TRUE)                #RESCALE DATA? (SET TO TRUE TO NORMALIZE)
+
+print(SVM_Model) #DIAGNOSTIC SUMMARY
+
+#REPORT IN AND OUT-OF-SAMPLE ERRORS (1-ACCURACY)
+(E_IN_PRETUNE<-1-mean(unname(predict(SVM_Model, svm_training))==Training_Partition$Gross))
+(E_OUT_PRETUNE<-1-mean(unname(predict(SVM_Model, svm_testing))==Testing_Partition$Gross))
+
+#TUNING THE SVM BY CROSS-VALIDATION
+tune_control<-tune.control(cross=10) #SET K-FOLD CV PARAMETERS
+set.seed(12)
+TUNE <- tune.svm(x = svm_training[,-1],
+                 y = svm_training[,1],
+                 type = "eps-regression",
+                 kernel = "radial",
+                 tunecontrol=tune_control,
+                 cost=c(.01, .1, 1, 10, 100, 1000), #REGULARIZATION PARAMETER
+                 gamma = 1/(ncol(svm_training)-1), #KERNEL PARAMETER
+                 coef0 = 0,           #KERNEL PARAMETER
+                 degree = 2)          #POLYNOMIAL KERNEL PARAMETER
+
+print(TUNE) #OPTIMAL TUNING PARAMETERS FROM VALIDATION PROCEDURE
+
+SVM_Model_tuned<- svm(Gross~IMDB_Rating + budget + budget2, 
+                data = svm_training, 
+                type = "eps-regression", #set to "eps-regression" for numeric prediction
+                kernel = "radial",
+                cost=10,                   #REGULARIZATION PARAMETER
+                gamma = 0.333, #DEFAULT KERNEL PARAMETER
+                coef0 = 0,                    #DEFAULT KERNEL PARAMETER
+                degree=2,                     #POLYNOMIAL KERNEL PARAMETER
+                scale = TRUE)                #RESCALE DATA? (SET TO TRUE TO NORMALIZE)
+
+print(SVM_Model_tuned) #DIAGNOSTIC SUMMARY
+
+#REPORT IN AND OUT-OF-SAMPLE ERRORS (1-ACCURACY)
+(E_IN_TUNED<-1-mean(unname(predict(SVM_Model_tuned, svm_training))==Training_Partition$Gross))
+(E_OUT_TUNED<-1-mean(unname(predict(SVM_Model_tuned, svm_testing))==Testing_Partition$Gross))
 
 
 #STEP 1: FORM THE INPUT MATRIX X:
