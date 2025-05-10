@@ -339,6 +339,22 @@ MT0 <- lm(Gross~IMDB_Rating + budget + Action + Comedy + Drama + Horror,Training
 summary(MT0)
 #Multiple R-squared:  0.559
 
+PRED_0_IN <- predict(MT0, Training_Partition) 
+PRED_0_OUT <- predict(MT0, Testing_Partition) 
+
+Training_Partition$PRED_0_IN_Num <- unname(PRED_0_IN)  #fix an issue where we had named numerics, causing NA for Pred_IN
+Training_Partition$Gross_Num <- (Training_Partition$Gross) 
+
+# Strip names before computing error
+Testing_Partition$PRED_0_OUT_Num <- unname(PRED_0_OUT)  #fix an issue where we had class = named numerics, causing NA for Pred_IN
+Testing_Partition$Gross_Num <- (Testing_Partition$Gross) #fix an issue where we had class = named numerics, causing NA for Pred_IN
+
+# calculate RMSE
+RMSE_0_In <- sqrt(mean((Training_Partition$PRED_0_IN_Num - Training_Partition$Gross_Num)^2))
+RMSE_0_In
+RMSE_0_Out <- sqrt(mean((Testing_Partition$PRED_0_OUT_Num - Testing_Partition$Gross_Num)^2))
+RMSE_0_Out
+
 # ====== 5b linear model ================================
 
 
@@ -358,9 +374,11 @@ Training_Partition$Gross_Num <- (Training_Partition$Gross)
 Testing_Partition$PRED_1_OUT_Num <- unname(PRED_1_OUT)  #fix an issue where we had class = named numerics, causing NA for Pred_IN
 Testing_Partition$Gross_Num <- (Testing_Partition$Gross) #fix an issue where we had class = named numerics, causing NA for Pred_IN
 
-
-
-
+# calculate RMSE
+RMSE_1_In <- sqrt(mean((Training_Partition$PRED_1_IN_Num - Training_Partition$Gross_Num)^2))
+RMSE_1_In
+RMSE_1_Out <- sqrt(mean((Testing_Partition$PRED_1_OUT_Num - Testing_Partition$Gross_Num)^2))
+RMSE_1_Out
 
 
 
