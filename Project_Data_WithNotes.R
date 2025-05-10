@@ -1,3 +1,5 @@
+#install.packages("glmnet")
+
 # Load necessary libraries
 library(dplyr)   # For data manipulation
 library(ggplot2) # For plotting
@@ -51,16 +53,16 @@ data2 <- data2 %>%
     budget = budget
   )
 
+#This is removing the "Min" and spacing in the Runtime in the data
 data2$Runtime <- as.numeric(gsub("[^0-9]", "", data2$Runtime))
 data2$Runtime <- data2$Runtime/10
 
-data3 <- data3 %>%
-  mutate(Gross = Earnings)
 
 # Standardize column names in data3, we saw that Gross was different than the actual
 #Gross value, causing an issue with negative "Gross" values
 
-data3 <- select(data3, -Gross)
+#This Gross Value is incorrect, this is representing Budget - Box.Office
+
 
 data3 <- data3 %>%
   rename(
@@ -155,7 +157,12 @@ merged_all_no_duplicates <- merged_all %>%
   filter(!Series_Title %in% merged_all$Series_Title[duplicated(merged_all$Series_Title) | duplicated(merged_all$Series_Title, fromLast = TRUE)])
 any(duplicated(merged_all_no_duplicates$Series_Title))  # Should return FALSE
 
+
+#MAIN DATAFRAME WILL BE Main_df
 Main_df <- merged_all_no_duplicates
+
+
+#Check to see if values are usable in budget
 
 sum(is.na(Main_df$budget))          # Count of NA in budget
 sum(!is.finite(Main_df$budget))     # Count of Inf, -Inf, or NaN in budget
@@ -207,6 +214,7 @@ ggplot(merged_all_no_duplicates, aes(x = Released_Year, y = Gross)) +
 #Update Runtime to make it an integer
 Main_df$Runtime <- as.numeric(gsub(" min", "", Main_df$Runtime))
 
+Main_df <- Main_df[, c("Gross", setdiff(names(Main_df), "Gross"))]
 #Our dataset for now is: "merged_all_no_duplicates" 
 
 #FRACTION OF DATA TO BE USED AS IN-SAMPLE TRAINING DATA
@@ -240,28 +248,78 @@ Training_Partition <- Training[-validation_ind,] #Remainder go to Training
 obs_count == nrow(Validation_Partition) + nrow(Training_Partition) + nrow(Testing_Partition)
 #We now have: Training Partition 40%, Validation Partition 30%, and a Testing Partion 30%
 
+#BIVARIATE LINEAR MODEL - SIMPLE 1.A#
+#LINEAR REGRESSION#
 M1 <- lm(Gross~budget,Training_Partition)
 summary(M1)
 #Multiple R-squared:  0.5368
 
+#BIVARIATE TRANSFORMS 1.B#
+#QUADRATIC REGRESSION#
 M2 <- lm(Gross~budget + budget2,Training_Partition)
 summary(M2)
 #Multiple R-squared:  0.5334
 
+#CUBIC REGRESSION#
 M3 <- lm(Gross~budget + budget2 + budget3,Training_Partition)
 summary(M3)
 #Multiple R-squared:  0.4415
 
+#SQRT REGRESSION#
 M4 <- lm(Gross~budget4,Training_Partition)
 summary(M4)
 #Multiple R-squared:  0.3863
 
+
+#############################
+#IMPLEMENTING REGULARIZATION#
+#############################
+
+# #INITIALIZE EMPTY MATRICES FOR STORING PREDICTION AND ERRORS
+# PRED_IN <- matrix(NA, nrow = dim(Training_Partition)[1], ncol=length(lambda))
+# PRED_OUT <- matrix(NA, nrow = dim(Testing_Partition)[1], ncol=length(lambda))
+# E_IN <- matrix(NA, nrow = 1, ncol=length(lambda))
+# E_OUT <- matrix(NA, nrow = 1, ncol=length(lambda))
+# 
+# for (i in 1:length(lambda)){
+#   
+#   #COMPUTE PSEUDOINVERSE SOLUTION
+#   BETA_RIDGE[,i] <- solve(t(X)%*%X+lambda[i]*diag(dim(t(X)%*%X)[1]))%*%t(X)%*%y
+#   
+#   #COMPUTE PREDICTIONS IN AND OUT-OF-SAMPLE
+#   PRED_IN[,i] <- X%*%BETA_RIDGE[,i]
+#   PRED_OUT[,i] <- X_holdout%*%BETA_RIDGE[,i]
+#   
+#   #COMPUTE PREDICTION ERRORS (MSE) IN AND OUT-OF-SAMPLE
+#   E_IN[i] <- sqrt(mean((y-PRED_IN[,i])^2))
+#   E_OUT[i] <- sqrt(mean((y_holdout-PRED_OUT[,i])^2))
+# }
+# 
+# #STORE ERRORS VS. LAMBDAS IN SEPARATE DATAFRAMES
+# df_IN <- data.frame(cbind(Error=as.numeric(E_IN), Lambda=lambda))
+# df_OUT <- data.frame(cbind(Error=as.numeric(E_OUT), Lambda=lambda))
+# 
+# ggplot(df_IN, aes(y=Error, x=Lambda)) +
+#   geom_line(color='blue') +
+#   geom_line(data=df_OUT, color='red') +
+#   ggtitle("E_IN & E_OUT VS. REGULARIZATION PARAMETER (LAMBDA)") +
+#   theme(plot.title = element_text(hjust = .5))
+# 
+# #REPORT MINIMUM E_OUT ESTIMATE FROM BEST REGULARIZED MODEL
+# (min(df_OUT$Error))
+# 
+# #RECOVER OPTIMAL LAMBDA
+# (Opt_Lambda <- df_OUT$Lambda[which.min(df_OUT$Error)])
+
+#BIVARIATE 1.D - GENERAL ADDIDITIVE STRUCTURE#
 #MODEL 6: Y=s(x) SPLINE MODEL
 M5 <- gam(Gross ~ s(budget), data = Training_Partition, family = 'gaussian')
 summary(M5) #generates summary diagnostic output
 #R-sq.(adj) =   0.58
 
-#These are named nums, which cause issues
+
+
+#These are named nums, which cause issues, use unname() function to fix
 Training_Partition$PRED_1_IN <- unname(predict(M1, Training_Partition))
 Testing_Partition$PRED_1_OUT <- unname(predict(M1, Testing_Partition))
 RMSE_1_In <- sqrt(mean((Training_Partition$PRED_1_IN - Training_Partition$Gross)^2))
@@ -305,16 +363,20 @@ TABLE_VAL #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
 
 #use the validation sample to conduct a "Non-contaminated" R^2.
 
+
+
 Validation_Partition$PRED_2_Out <- unname(predict(M2,Validation_Partition))
 RMSE_2_Validate <- sqrt(mean((Validation_Partition$PRED_2_Out - Validation_Partition$Gross)^2))
 RMSE_2_Validate
 
-#MULTIVARIATE
+#############################
+#MULTIVARIATE#
+#############################
 
 #Creation of a simple Regression model, y = mx + b
 M1 <- lm(Gross~IMDB_Rating + budget + budget2,Training_Partition)
 summary(M1)
-#Multiple R-squared:  0.5595
+#Multiple R-squared:  0.5619
 
 PRED_1_IN <- predict(M1, Training_Partition) 
 PRED_1_OUT <- predict(M1, Testing_Partition) 
@@ -327,98 +389,60 @@ Testing_Partition$PRED_1_OUT_Num <- unname(PRED_1_OUT)  #fix an issue where we h
 Testing_Partition$Gross_Num <- (Testing_Partition$Gross) #fix an issue where we had class = named numerics, causing NA for Pred_IN
 
 
-
-
-
-
-
-#STEP 1: FORM THE INPUT MATRIX X:
-
-#STEP 1.1: MAKE A COLUMN OF ONES TO INCLUDE AS REGRESSORS FOR INTERCEPT
-col_of_ones <- rep(1, dim(Training_Partition)[1])
-
-#STEP 1.2: BIND COLUMN OF ONES WITH OTHER INPUT DATA COLUMNS
-#AND COERCE TO MATRIX OBJECT
-X <- as.matrix(cbind(col_of_ones, Training_Partition[,-1]))
-
-#STEP 2: FORM THE OUTPUT VECTOR y
-y <- Training_Partition[,1]
-
-# Convert to a numeric matrix
-X_numeric <- as.matrix(X)
-X_numeric <- apply(X_numeric, 2, as.numeric)  # Ensures each column is numeric
-
-# Now compute the pseudoinverse
-X_pseudo <- solve(t(X_numeric) %*% X_numeric) %*% t(X_numeric)
-
-#STEP 3: COMPUTE THE PSEUDOINVERSE MATRIX
-
-#STEP 4: MULTIPLY THE PSEUDOINVERSE MATRIX BY THE OUTPUT VECTOR
-Betas <- X_pseudo%*%y
-
 #############################
 #IMPLEMENTING REGULARIZATION#
 #############################
 
-#LET'S IMPLEMENT SOME REGULARIZATION USING THE L2 RIDGE PENALTY
+#LET'S IMPLEMENT SOME REGULARIZATION RIDGE
 
-#SET UP GRID OF REGULARIZATION PARAMETER (LAMBDA) VALUES
-lambda <- seq(0, 2,.001)
+training <- Training_Partition[, c("Gross", "budget2", "budget", "IMDB_Rating")]
+holdout <- Testing_Partition[, c("Gross", "budget2", "budget", "IMDB_Rating")]
 
-#INITIALIZE EMPTY MATRIX TO STORE ESTIMATED MODEL COEFFICIENTS FOR EACH LAMBDA
-BETA_RIDGE <- matrix(NA, nrow = dim(t(X)%*%X)[1], ncol=length(lambda))
+col_of_ones <- rep(1, dim(training)[1])
 
-#INITIALIZE EMPTY MATRICES FOR STORING PREDICTION AND ERRORS
-PRED_IN <- matrix(NA, nrow = dim(training)[1], ncol=length(lambda))
-PRED_OUT <- matrix(NA, nrow = dim(holdout)[1], ncol=length(lambda))
-E_IN <- matrix(NA, nrow = 1, ncol=length(lambda))
-E_OUT <- matrix(NA, nrow = 1, ncol=length(lambda))
+X <- as.matrix(cbind(col_of_ones, training[-1]))
 
-for (i in 1:length(lambda)){
-  
-  #COMPUTE PSEUDOINVERSE SOLUTION
-  BETA_RIDGE[,i] <- solve(t(X)%*%X+lambda[i]*diag(dim(t(X)%*%X)[1]))%*%t(X)%*%y
-  
-  #COMPUTE PREDICTIONS IN AND OUT-OF-SAMPLE
-  PRED_IN[,i] <- X%*%BETA_RIDGE[,i]
-  PRED_OUT[,i] <- X_holdout%*%BETA_RIDGE[,i]
-  
-  #COMPUTE PREDICTION ERRORS (MSE) IN AND OUT-OF-SAMPLE
-  E_IN[i] <- sqrt(mean((y-PRED_IN[,i])^2))
-  E_OUT[i] <- sqrt(mean((y_holdout-PRED_OUT[,i])^2))
-}
+y <- training[,1]
 
-#STORE ERRORS VS. LAMBDAS IN SEPARATE DATAFRAMES
-df_IN <- data.frame(cbind(Error=as.numeric(E_IN), Lambda=lambda))
-df_OUT <- data.frame(cbind(Error=as.numeric(E_OUT), Lambda=lambda))
+library(glmnet)
+X_mat <- as.matrix(X)
+ridge_model <- glmnet(X_mat, y, alpha = 0)
+ridge_model
 
-ggplot(df_IN, aes(y=Error, x=Lambda)) +
-  geom_line(color='blue') +
-  geom_line(data=df_OUT, color='red') +
-  ggtitle("E_IN & E_OUT VS. REGULARIZATION PARAMETER (LAMBDA)") +
-  theme(plot.title = element_text(hjust = .5))
+library(glmnet)
 
-#REPORT MINIMUM E_OUT ESTIMATE FROM BEST REGULARIZED MODEL
-(min(df_OUT$Error))
+# Assuming X_mat is your matrix of predictors and y is your response variable
 
-#RECOVER OPTIMAL LAMBDA
-(Opt_Lambda <- df_OUT$Lambda[which.min(df_OUT$Error)])
+# Perform cross-validated ridge regression (alpha = 0 for ridge)
+cv_ridge <- cv.glmnet(X_mat, y, alpha = 0)
 
-#REPLOT WITH MINIMUM ERROR IDENTIFIED
-ggplot(df_OUT, aes(y=Error, x=Lambda)) +
-  geom_line(color='red') +
-  geom_vline(xintercept=Opt_Lambda, color='red', lty=2) +
-  ggtitle("E_OUT VS. REGULARIZATION PARAMETER (LAMBDA)") +
-  theme(plot.title = element_text(hjust = .5))
+# Plot the cross-validation curve
+plot(cv_ridge)
 
+# Get the lambda that gives minimum mean cross-validated error
+best_lambda <- cv_ridge$lambda.min
+cat("Best lambda:", best_lambda, "\n")
 
+# If you want a slightly more regularized model (1 SE rule)
+lambda_1se <- cv_ridge$lambda.1se
+cat("1-SE lambda:", lambda_1se, "\n")
 
+ridge_model <- glmnet(X_mat, y, alpha = 0, lambda = best_lambda)
+ridge_model
 
+# E_IN using training data
+pred_train <- predict(ridge_model, newx = X_mat)
+E_IN <- sqrt(mean((y - pred_train)^2))
+E_IN
 
+# Prepare the holdout (test) set for prediction
+X_test <- as.matrix(cbind(rep(1, nrow(holdout)), holdout[, -1]))  # Add intercept term for test set
+y_test <- holdout[, 1]  # True values for the test set
 
-
-
-
+# E_OUT using test data (out-of-sample error)
+pred_test <- predict(ridge_model, newx = X_test)
+E_OUT <- sqrt(mean((y_test - pred_test)^2))  # RMSE for test data
+cat("E_OUT (RMSE for test data):", E_OUT, "\n")
 
 
 
@@ -437,98 +461,149 @@ ggplot(df_OUT, aes(y=Error, x=Lambda)) +
 
 
 # 
-# #Checking class and lengths
-# class(Testing_Partition$PRED_1_OUT_Num)
-# class(Testing_Partition$Gross_Num)
-# length(Testing_Partition$PRED_1_OUT_Num)
-# length(Training_Partition$PRED_1_IN_Num)
+# #SET UP GRID OF REGULARIZATION PARAMETER (LAMBDA) VALUES
+# lambda <- seq(0, 2,.001)
 # 
-# #We need to remove the NAs otherwise the RMSE comes out as nothing, we fill in the Gross_Nums here away
-# #The complete.cases() function in R is used to identify rows in a data frame, matrix, or vector that do not contain
-# #any missing values (NA). This function returns a logical vector indicating which cases are
-# #complete.
-# #IN SAMPLE CLEANING - Trainign DF, along with RMSE Calc
-# valid_rows <- complete.cases(Training_Partition$PRED_1_IN_Num, Training_Partition$Gross_Num)
-# RMSE_1_In <- sqrt(mean((Training_Partition$PRED_1_IN_Num[valid_rows] - Training_Partition$Gross_Num[valid_rows])^2))
-# RMSE_1_In
+# #INITIALIZE EMPTY MATRIX TO STORE ESTIMATED MODEL COEFFICIENTS FOR EACH LAMBDA
+# BETA_RIDGE <- matrix(NA, nrow = dim(t(X)%*%X)[1], ncol=length(lambda))
 # 
-# #OUT SAMPLE CLEANING - Testing DF, along with RMSE Calc
-# valid_rows <- complete.cases(Testing_Partition$PRED_1_OUT_Num, Testing_Partition$Gross_Num)
-# RMSE_1_Out <- sqrt(mean((Testing_Partition$PRED_1_OUT_Num[valid_rows] - Testing_Partition$Gross_Num[valid_rows])^2))
-# RMSE_1_Out
+# #INITIALIZE EMPTY MATRICES FOR STORING PREDICTION AND ERRORS
+# PRED_IN <- matrix(NA, nrow = dim(Training_Partition)[1], ncol=length(lambda))
+# PRED_OUT <- matrix(NA, nrow = dim(Testing_Partition)[1], ncol=length(lambda))
+# E_IN <- matrix(NA, nrow = 1, ncol=length(lambda))
+# E_OUT <- matrix(NA, nrow = 1, ncol=length(lambda))
 # 
-# #We see RMSEs between the two, RMSE for out of sample is actually smaller than the In Sample, this is likely due to
-# #James Cameron movies like Titanic and Avatar, huge outliers in our dataframes
-# #---------------------------------------------------------------------------------
+# for (i in 1:length(lambda)){
 # 
-# #log transform data
+#   #COMPUTE PSEUDOINVERSE SOLUTION
+#   BETA_RIDGE[,i] <- solve(t(X)%*%X+lambda[i]*diag(dim(t(X)%*%X)[1]))%*%t(X)%*%y
 # 
-# # Now create the log variable
-# Training_Partition$Log_Gross <- log(Training_Partition$Gross)
-# Testing_Partition$Log_Gross <- log(Testing_Partition$Gross)
+#   #COMPUTE PREDICTIONS IN AND OUT-OF-SAMPLE
+#   PRED_IN[,i] <- X%*%BETA_RIDGE[,i]
+#   PRED_OUT[,i] <- X_holdout%*%BETA_RIDGE[,i]
 # 
-# # Now this will work
-# M1_log <- lm(Log_Gross ~ IMDB_Rating + Released_Year + Runtime + budget, data = Training_Partition)
-# summary(M1_log)
-# # Multiple R-squared: 0.3496
+#   #COMPUTE PREDICTION ERRORS (MSE) IN AND OUT-OF-SAMPLE
+#   E_IN[i] <- sqrt(mean((y-PRED_IN[,i])^2))
+#   E_OUT[i] <- sqrt(mean((y_holdout-PRED_OUT[,i])^2))
+# }
 # 
-# #SQRT transform data
-# Training_Partition$SQRT_Gross <- (Training_Partition$Gross)^.5
-# Testing_Partition$SQRT_Gross <- (Testing_Partition$Gross)^.5
+# #STORE ERRORS VS. LAMBDAS IN SEPARATE DATAFRAMES
+# df_IN <- data.frame(cbind(Error=as.numeric(E_IN), Lambda=lambda))
+# df_OUT <- data.frame(cbind(Error=as.numeric(E_OUT), Lambda=lambda))
 # 
-# M1_SQRT <- lm(SQRT_Gross ~ IMDB_Rating + Released_Year + Runtime + budget, data = Training_Partition)
-# summary(M1_SQRT)
-# #Multiple R-squared:  0.6137
+# ggplot(df_IN, aes(y=Error, x=Lambda)) +
+#   geom_line(color='blue') +
+#   geom_line(data=df_OUT, color='red') +
+#   ggtitle("E_IN & E_OUT VS. REGULARIZATION PARAMETER (LAMBDA)") +
+#   theme(plot.title = element_text(hjust = .5))
 # 
-# Training_Partition$Cube_RT_Gross <- (Training_Partition$Gross)^(1/3)
-# Testing_Partition$Cube_RT_Gross <- (Testing_Partition$Gross)^(1/3)
+# #REPORT MINIMUM E_OUT ESTIMATE FROM BEST REGULARIZED MODEL
+# (min(df_OUT$Error))
 # 
-# M1_Cube_RT <- lm(Cube_RT_Gross ~ IMDB_Rating + Released_Year + Runtime + budget, data = Training_Partition)
-# summary(M1_Cube_RT)
+# #RECOVER OPTIMAL LAMBDA
+# (Opt_Lambda <- df_OUT$Lambda[which.min(df_OUT$Error)])
+# 
+# #REPLOT WITH MINIMUM ERROR IDENTIFIED
+# ggplot(df_OUT, aes(y=Error, x=Lambda)) +
+#   geom_line(color='red') +
+#   geom_vline(xintercept=Opt_Lambda, color='red', lty=2) +
+#   ggtitle("E_OUT VS. REGULARIZATION PARAMETER (LAMBDA)") +
+#   theme(plot.title = element_text(hjust = .5))
 # 
 # 
-# #Decide on a set of metrics with your group that everyone will use when benchmarking the
-# #models for the regression task for both in-sample and out-of-sample performance.
-# #Test against other data
-# 
-# # Generate predictions SQRT
-# PRED_1_IN_SQRT <- predict(M1_SQRT, Training_Partition)
-# PRED_1_OUT_SQRT <- predict(M1_SQRT, Testing_Partition)
-# 
-# # Clean vectors for RMSE calculation (strip names, handle NA)
-# # This changes "Named Num Class" to "num"
-# PRED_1_IN_vec_SQRT <- unname(PRED_1_IN_SQRT)
-# Gross_IN_vec_SQRT <- unname(Training_Partition$SQRT_Gross)
-# PRED_1_OUT_vec_SQRT <- unname(PRED_1_OUT_SQRT)
-# Gross_OUT_vec_SQRT <- unname(Testing_Partition$SQRT_Gross)
-# 
-# #this removes all na cases, we cannot compute NA datapoints
-# valid_idx_in <- complete.cases(PRED_1_IN_vec_SQRT,Gross_IN_vec_SQRT)
-# valid_idx_out <- complete.cases(PRED_1_OUT_vec_SQRT, Gross_OUT_vec_SQRT)
-# 
-# # In-sample RMSE for the SQRT data
-# RMSE_1_IN_SQRT <- sqrt(mean((PRED_1_IN_vec_SQRT[valid_idx_in]  - Gross_IN_vec_SQRT[valid_idx_in] )^2))
-# RMSE_1_IN_SQRT
-# #3606.337
-# 
-# # Out-of-sample RMSE for the SQRT data
-# RMSE_1_OUT_SQRT <- sqrt(mean((PRED_1_OUT_vec_SQRT[valid_idx_out] - Gross_OUT_vec_SQRT[valid_idx_out])^2))
-# RMSE_1_OUT_SQRT
-# #3613.986
-# 
-# #Standard
-# PRED_1_IN <- predict(M1, Training_Partition)
-# PRED_1_OUT <- predict(M1, Testing_Partition) 
-# 
-# PRED_1_IN_vec <- unname(PRED_1_IN)
-# Gross_IN_vec <- unname(Training_Partition$Gross)
-# PRED_1_OUT_vec <- unname(PRED_1_OUT)
-# Gross_OUT_vec <- unname(Testing_Partition$Gross)
-# 
-# RMSE_1_IN <- sqrt(mean((PRED_1_IN_vec[valid_idx_in]  - Gross_IN_vec[valid_idx_in] )^2))
-# RMSE_1_IN
-# #102909686 something is wrong here
-# 
-# RMSE_1_OUT <- sqrt(mean((PRED_1_OUT_vec[valid_idx_out] - Gross_OUT_vec[valid_idx_out])^2))
-# RMSE_1_OUT
-# #91350964 something is wrong here
+# #
+# # #Checking class and lengths
+# # class(Testing_Partition$PRED_1_OUT_Num)
+# # class(Testing_Partition$Gross_Num)
+# # length(Testing_Partition$PRED_1_OUT_Num)
+# # length(Training_Partition$PRED_1_IN_Num)
+# #
+# # #We need to remove the NAs otherwise the RMSE comes out as nothing, we fill in the Gross_Nums here away
+# # #The complete.cases() function in R is used to identify rows in a data frame, matrix, or vector that do not contain
+# # #any missing values (NA). This function returns a logical vector indicating which cases are
+# # #complete.
+# # #IN SAMPLE CLEANING - Trainign DF, along with RMSE Calc
+# # valid_rows <- complete.cases(Training_Partition$PRED_1_IN_Num, Training_Partition$Gross_Num)
+# # RMSE_1_In <- sqrt(mean((Training_Partition$PRED_1_IN_Num[valid_rows] - Training_Partition$Gross_Num[valid_rows])^2))
+# # RMSE_1_In
+# #
+# # #OUT SAMPLE CLEANING - Testing DF, along with RMSE Calc
+# # valid_rows <- complete.cases(Testing_Partition$PRED_1_OUT_Num, Testing_Partition$Gross_Num)
+# # RMSE_1_Out <- sqrt(mean((Testing_Partition$PRED_1_OUT_Num[valid_rows] - Testing_Partition$Gross_Num[valid_rows])^2))
+# # RMSE_1_Out
+# #
+# # #We see RMSEs between the two, RMSE for out of sample is actually smaller than the In Sample, this is likely due to
+# # #James Cameron movies like Titanic and Avatar, huge outliers in our dataframes
+# # #---------------------------------------------------------------------------------
+# #
+# # #log transform data
+# #
+# # # Now create the log variable
+# # Training_Partition$Log_Gross <- log(Training_Partition$Gross)
+# # Testing_Partition$Log_Gross <- log(Testing_Partition$Gross)
+# #
+# # # Now this will work
+# # M1_log <- lm(Log_Gross ~ IMDB_Rating + Released_Year + Runtime + budget, data = Training_Partition)
+# # summary(M1_log)
+# # # Multiple R-squared: 0.3496
+# #
+# # #SQRT transform data
+# # Training_Partition$SQRT_Gross <- (Training_Partition$Gross)^.5
+# # Testing_Partition$SQRT_Gross <- (Testing_Partition$Gross)^.5
+# #
+# # M1_SQRT <- lm(SQRT_Gross ~ IMDB_Rating + Released_Year + Runtime + budget, data = Training_Partition)
+# # summary(M1_SQRT)
+# # #Multiple R-squared:  0.6137
+# #
+# # Training_Partition$Cube_RT_Gross <- (Training_Partition$Gross)^(1/3)
+# # Testing_Partition$Cube_RT_Gross <- (Testing_Partition$Gross)^(1/3)
+# #
+# # M1_Cube_RT <- lm(Cube_RT_Gross ~ IMDB_Rating + Released_Year + Runtime + budget, data = Training_Partition)
+# # summary(M1_Cube_RT)
+# #
+# #
+# # #Decide on a set of metrics with your group that everyone will use when benchmarking the
+# # #models for the regression task for both in-sample and out-of-sample performance.
+# # #Test against other data
+# #
+# # # Generate predictions SQRT
+# # PRED_1_IN_SQRT <- predict(M1_SQRT, Training_Partition)
+# # PRED_1_OUT_SQRT <- predict(M1_SQRT, Testing_Partition)
+# #
+# # # Clean vectors for RMSE calculation (strip names, handle NA)
+# # # This changes "Named Num Class" to "num"
+# # PRED_1_IN_vec_SQRT <- unname(PRED_1_IN_SQRT)
+# # Gross_IN_vec_SQRT <- unname(Training_Partition$SQRT_Gross)
+# # PRED_1_OUT_vec_SQRT <- unname(PRED_1_OUT_SQRT)
+# # Gross_OUT_vec_SQRT <- unname(Testing_Partition$SQRT_Gross)
+# #
+# # #this removes all na cases, we cannot compute NA datapoints
+# # valid_idx_in <- complete.cases(PRED_1_IN_vec_SQRT,Gross_IN_vec_SQRT)
+# # valid_idx_out <- complete.cases(PRED_1_OUT_vec_SQRT, Gross_OUT_vec_SQRT)
+# #
+# # # In-sample RMSE for the SQRT data
+# # RMSE_1_IN_SQRT <- sqrt(mean((PRED_1_IN_vec_SQRT[valid_idx_in]  - Gross_IN_vec_SQRT[valid_idx_in] )^2))
+# # RMSE_1_IN_SQRT
+# # #3606.337
+# #
+# # # Out-of-sample RMSE for the SQRT data
+# # RMSE_1_OUT_SQRT <- sqrt(mean((PRED_1_OUT_vec_SQRT[valid_idx_out] - Gross_OUT_vec_SQRT[valid_idx_out])^2))
+# # RMSE_1_OUT_SQRT
+# # #3613.986
+# #
+# # #Standard
+# # PRED_1_IN <- predict(M1, Training_Partition)
+# # PRED_1_OUT <- predict(M1, Testing_Partition)
+# #
+# # PRED_1_IN_vec <- unname(PRED_1_IN)
+# # Gross_IN_vec <- unname(Training_Partition$Gross)
+# # PRED_1_OUT_vec <- unname(PRED_1_OUT)
+# # Gross_OUT_vec <- unname(Testing_Partition$Gross)
+# #
+# # RMSE_1_IN <- sqrt(mean((PRED_1_IN_vec[valid_idx_in]  - Gross_IN_vec[valid_idx_in] )^2))
+# # RMSE_1_IN
+# # #102909686 something is wrong here
+# #
+# # RMSE_1_OUT <- sqrt(mean((PRED_1_OUT_vec[valid_idx_out] - Gross_OUT_vec[valid_idx_out])^2))
+# # RMSE_1_OUT
+# # #91350964 something is wrong here
