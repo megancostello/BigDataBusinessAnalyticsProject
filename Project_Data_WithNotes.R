@@ -175,6 +175,23 @@ Main_df$budget2 <- Main_df$budget^2
 Main_df$budget3 <- Main_df$budget^3
 Main_df$budget4 <- Main_df$budget^.5
 
+# view top three genres
+unique(Main_df$Genre)
+Main_df %>% count(Genre)
+
+# add dummy categorical vars for top three genres (plus horror)
+Main_df$Action[Main_df$Genre=='Action']<-1 #if it's action, code the action variable 1
+Main_df$Action[Main_df$Genre!='Action']<-0 #if it's not action, code the action variable 0
+
+Main_df$Drama[Main_df$Genre=='Drama']<-1 #if it's Drama, code the Drama variable 1
+Main_df$Drama[Main_df$Genre!='Drama']<-0 #if it's not Drama, code the Drama variable 0
+
+Main_df$Comedy[Main_df$Genre=='Comedy']<-1 #if it's Comedy, code the Comedy variable 1
+Main_df$Comedy[Main_df$Genre!='Comedy']<-0 #if it's not Comedy, code the Comedy variable 0
+
+Main_df$Horror[Main_df$Genre=='Horror']<-1 #if it's Horror, code the Horror variable 1
+Main_df$Horror[Main_df$Genre!='Horror']<-0 #if it's not Horror, code the Horror variable 0
+
   
 #THE ABOVE IS THE DATASET.
 
@@ -309,15 +326,23 @@ Validation_Partition$PRED_2_Out <- unname(predict(M2,Validation_Partition))
 RMSE_2_Validate <- sqrt(mean((Validation_Partition$PRED_2_Out - Validation_Partition$Gross)^2))
 RMSE_2_Validate
 
-#MULTIVARIATE
+#############################
+#    5. MULTIVARIATE        #
+#############################
 
+# ====== 5a linear transformations ================================
+MT0 <- lm(Gross~IMDB_Rating + budget + Action + Comedy + Drama + Horror,Training_Partition)
+summary(MT0)
+
+
+# ====== INCLUDES TRANSFORMATIONS budget2 ================================
 #Creation of a simple Regression model, y = mx + b
-M1 <- lm(Gross~IMDB_Rating + budget + budget2,Training_Partition)
-summary(M1)
+MT1 <- lm(Gross~IMDB_Rating + budget + budget2,Training_Partition)
+summary(MT1)
 #Multiple R-squared:  0.5595
 
-PRED_1_IN <- predict(M1, Training_Partition) 
-PRED_1_OUT <- predict(M1, Testing_Partition) 
+PRED_1_IN <- predict(MT1, Training_Partition) 
+PRED_1_OUT <- predict(MT1, Testing_Partition) 
 
 Training_Partition$PRED_1_IN_Num <- unname(PRED_1_IN)  #fix an issue where we had named numerics, causing NA for Pred_IN
 Training_Partition$Gross_Num <- (Training_Partition$Gross) 
@@ -356,9 +381,9 @@ X_pseudo <- solve(t(X_numeric) %*% X_numeric) %*% t(X_numeric)
 #STEP 4: MULTIPLY THE PSEUDOINVERSE MATRIX BY THE OUTPUT VECTOR
 Betas <- X_pseudo%*%y
 
-#############################
-#IMPLEMENTING REGULARIZATION#
-#############################
+###############################
+# IMPLEMENTING REGULARIZATION #
+###############################
 
 #LET'S IMPLEMENT SOME REGULARIZATION USING THE L2 RIDGE PENALTY
 
