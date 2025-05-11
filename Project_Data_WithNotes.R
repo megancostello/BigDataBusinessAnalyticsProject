@@ -544,6 +544,33 @@ print(SVM_Model_tuned) #DIAGNOSTIC SUMMARY
 (E_IN_TUNED<-1-mean(unname(predict(SVM_Model_tuned, svm_training))==Training_Partition$Gross))
 (E_OUT_TUNED<-1-mean(unname(predict(SVM_Model_tuned, svm_testing))==Testing_Partition$Gross))
 
+# ====== 5e regression tree ==========================================================
+
+library(tidymodels) 
+library(rpart.plot)
+#SPECIFYING THE regression TREE MODEL
+
+class_spec <- decision_tree(min_n = 20 , #minimum number of observations for split
+                            tree_depth = 30, #max tree depth
+                            cost_complexity = 0.01)  %>% #regularization parameter
+  set_engine("rpart") %>%
+  set_mode("regression")
+print(class_spec)
+
+#ESTIMATING THE MODEL 
+reg_fmla <- Gross ~ .
+reg_tree <- class_spec %>%
+  fit(formula = reg_fmla, data = svm_training)
+print(reg_tree)
+
+#VISUALIZING THE TREE MODEL:
+reg_tree$fit %>%
+  rpart.plot(type = 2,roundint = FALSE)
+
+plotcp(reg_tree$fit)
+
+
+
 #############################
 #IMPLEMENTING REGULARIZATION#
 #############################
@@ -576,7 +603,6 @@ Betas <- X_pseudo%*%y
 ###############################
 # IMPLEMENTING REGULARIZATION #
 ###############################
->>>>>>> 047753b21fe797d90eb19e979c160f2f960a2ba9
 
 #LET'S IMPLEMENT SOME REGULARIZATION RIDGE
 
