@@ -266,40 +266,39 @@ summary(M3)
 M4 <- lm(Gross~budget4,Training_Partition)
 summary(M4)
 
-# ====== 4c linear model ================================
+# ====== 4c regularized model ================================
 
-#simplified dataframe in attempt to do regularization on multivariate
-library(glmnet) #needed for regularization function glmnet(), install library above
-training <- Training_Partition[, c("Gross", "budget", "budget2")] #REGULARIZE BIVARIATE JUST BUDGET VS GROSS#
-holdout <- Testing_Partition[, c("Gross", "budget", "budget2")] #REGULARIZE BIVARIATE JUST BUDGET VS GROSS#
-col_of_ones <- rep(1, dim(training)[1]) #Column of ones to include the intercept when we multiply matrix
-X <- as.matrix(cbind(col_of_ones, training[-1])) #bind the col of ones to the training dataset, except gross
-y <- training[,1] #matrix for "Gross"
-X_mat <- as.matrix(X) 
-ridge_model <- glmnet(X_mat, y, alpha = 0)
-ridge_model
-cv_ridge <- cv.glmnet(X_mat, y, alpha = 0)
-# Get the lambda that gives minimum mean cross-validated error
+library(glmnet)
+library(mgcv)  # For GAM
+
+# Prepare the training data (including intercept)
+training <- Training_Partition[, c("Gross", "budget", "budget2")]
+holdout <- Testing_Partition[, c("Gross", "budget", "budget2")]
+
+col_of_ones <- rep(1, dim(training)[1])  # Intercept column
+X <- as.matrix(cbind(col_of_ones, training[-1]))  # Add intercept and remove Gross column
+y <- training[, 1]  # Target variable (Gross)
+
+# Train the Ridge regression model
+cv_ridge <- cv.glmnet(X, y, alpha = 0)
 best_lambda <- cv_ridge$lambda.min
-cat("Best lambda:", best_lambda, "\n")
-# If you want a slightly more regularized model (1 SE rule)
-lambda_1se <- cv_ridge$lambda.1se
-cat("1-SE lambda:", lambda_1se, "\n")
-ridge_model <- glmnet(X_mat, y, alpha = 0, lambda = best_lambda)
-ridge_model
-# E_IN using training data
-pred_train <- predict(ridge_model, newx = X_mat)
+ridge_model <- glmnet(X, y, alpha = 0, lambda = best_lambda)
+
+# Predicting E_IN using training data
+pred_train <- predict(ridge_model, newx = X)
 E_IN_BIVARIATE <- sqrt(mean((y - pred_train)^2))
-E_IN_BIVARIATE
-# Prepare the holdout (test) set for prediction
+cat("E_IN (RMSE for training data):", E_IN_BIVARIATE, "\n")
+
+# Prepare the test data (for out-of-sample error calculation)
 X_test <- as.matrix(cbind(rep(1, nrow(holdout)), holdout[, -1]))  # Add intercept term for test set
-y_test <- holdout[, 1]  # True values for the test set
-# E_OUT using test data (out-of-sample error)
+y_test <- holdout[, 1]
+
+# Predict using the test data
 pred_test <- predict(ridge_model, newx = X_test)
 E_OUT_BIVARIATE <- sqrt(mean((y_test - pred_test)^2))  # RMSE for test data
 cat("E_OUT (RMSE for test data):", E_OUT_BIVARIATE, "\n")
 
-# ====== 4c linear model end================================
+# ====== 4c regularized model end================================
 
 # ====== 4d General Addiditve Structure ===================================
 
@@ -308,20 +307,36 @@ M5 <- gam(Gross ~ s(budget), data = Training_Partition, family = 'gaussian')
 summary(M5) #generates summary diagnostic output
 
 # ====== 4e PLOT the Above ===================================
+
+# Plotting the models
 x_grid <- seq(min(Training_Partition$budget), max(Training_Partition$budget), length.out = 300)
-#x_grid <- seq(0,80,.1) #CREATES GRID OF X-AXIS VALUES
-#Training Datapoints plotted
-plot(Training_Partition$Gross ~ Training_Partition$budget, col='blue')
 
-predictions_1 <- predict(M1, data.frame(budget = x_grid))
-predictions_2 <- predict(M2, data.frame(budget = x_grid, budget2 = x_grid^2))
-predictions_3 <- predict(M3, data.frame(budget = x_grid, budget2 = x_grid^2, budget3 = x_grid^3))
-predictions_5 <- predict(M5, data.frame(budget = x_grid), type = 'response')
+# Plot training data
+plot(Training_Partition$Gross ~ Training_Partition$budget, col='blue', main="Model Fits: Linear, Polynomial, Regularized",
+     xlab="Budget", ylab="Gross")
 
-lines(x_grid, predictions_1, col='blue', lwd=3) #PLOTS M1
-lines(x_grid, predictions_2, col='lightgreen', lwd=3) #PLOTS M2
-lines(x_grid, predictions_3, col='green', lwd=3) #PLOTS M3
-lines(x_grid, predictions_5, col='yellow', lwd=3) #PLOTS M5 CV RIDGE on Bivariate
+# Predictions for other models
+predictions_1 <- predict(M1, data.frame(budget = x_grid))                      # Linear
+predictions_2 <- predict(M2, data.frame(budget = x_grid, budget2 = x_grid^2))  # Quadratic
+predictions_3 <- predict(M3, data.frame(budget = x_grid, budget2 = x_grid^2, budget3 = x_grid^3))  # Cubic
+predictions_5 <- predict(M5, data.frame(budget = x_grid), type = 'response')  # Spline
+
+# Correct prediction for Ridge Model (M6) -- ensure the matrix has the correct number of columns
+predictions_6 <- predict(ridge_model, newx = cbind(1, x_grid, x_grid^2))      # Ridge (Regularized)
+
+# Plot lines for each model
+lines(x_grid, predictions_1, col='blue', lwd=3)        # Linear
+lines(x_grid, predictions_2, col='lightgreen', lwd=3)  # Quadratic
+lines(x_grid, predictions_3, col='green', lwd=3)       # Cubic
+lines(x_grid, predictions_5, col='orange', lwd=3)      # Spline
+lines(x_grid, predictions_6, col='red', lwd=3)         # Ridge
+
+# Add test points
+points(Testing_Partition$Gross ~ Testing_Partition$budget, col='black', pch=3, cex=0.6)
+
+# Optional: Add a legend
+legend("topleft", legend=c("Linear", "Quadratic", "Cubic", "Spline", "Ridge"),
+       col=c("blue", "lightgreen", "green", "orange", "red"), lwd=3, bty="n")
 
 #Test Datapoints plotted
 points(Testing_Partition$Gross ~ Testing_Partition$budget, col='red', pch=3, cex=.5)
@@ -367,68 +382,29 @@ colnames(TABLE_VAL) <- c('LINEAR', 'QUADRATIC', 'CUBIC', 'Square Root', 'SPLINE'
 rownames(TABLE_VAL) <- c('RMSE_IN', 'RMSE_OUT')
 TABLE_VAL #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
 
-
+# ====== 4f Table of All, we will exclude the multivariate for this===================================
 #================================================================================
-#simplified dataframe in attempt to do regularization on multivariate
-training <- Training_Partition[, c("Gross", "budget2", "budget", "IMDB_Rating")]
-holdout <- Testing_Partition[, c("Gross", "budget2", "budget", "IMDB_Rating")]
-col_of_ones <- rep(1, dim(training)[1])
-X <- as.matrix(cbind(col_of_ones, training[-1]))
-y <- training[,1]
-X_mat <- as.matrix(X)
-ridge_model <- glmnet(X_mat, y, alpha = 0)
-ridge_model
 
-# Assuming X_mat is your matrix of predictors and y is your response variable
-# Perform cross-validated ridge regression (alpha = 0 for ridge)
-cv_ridge <- cv.glmnet(X_mat, y, alpha = 0)
-# Plot the cross-validation curve
-plot(cv_ridge)
-
-#Plot RMSE rather than MSE
-# Get mean cross-validated errors (MSE)
-mse_values <- cv_ridge$cvm
-# Convert MSE to RMSE
-rmse_values <- sqrt(mse_values)
-# Get log(lambda) values
-log_lambda <- log(cv_ridge$lambda)
-# Plot RMSE vs log(lambda)
-plot(log_lambda, rmse_values, type = "b", pch = 20, col = "blue",
-     xlab = "log(Lambda)", ylab = "RMSE",
-     main = "Cross-Validated RMSE vs log(Lambda)")
-abline(v = log(cv_ridge$lambda.min), col = "red", lty = 2)  # Best lambda
-
-# Get the lambda that gives minimum mean cross-validated error
-best_lambda <- cv_ridge$lambda.min
-cat("Best lambda:", best_lambda, "\n")
-# If you want a slightly more regularized model (1 SE rule)
-lambda_1se <- cv_ridge$lambda.1se
-cat("1-SE lambda:", lambda_1se, "\n")
-ridge_model <- glmnet(X_mat, y, alpha = 0, lambda = best_lambda)
-ridge_model
-# E_IN using training data
-pred_train <- predict(ridge_model, newx = X_mat)
-E_IN <- sqrt(mean((y - pred_train)^2))
-E_IN
-# Prepare the holdout (test) set for prediction
-X_test <- as.matrix(cbind(rep(1, nrow(holdout)), holdout[, -1]))  # Add intercept term for test set
-y_test <- holdout[, 1]  # True values for the test set
-# E_OUT using test data (out-of-sample error)
-pred_test <- predict(ridge_model, newx = X_test)
-E_OUT <- sqrt(mean((y_test - pred_test)^2))  # RMSE for test data
-cat("E_OUT (RMSE for test data):", E_OUT, "\n")
-TABLE_VAL <- as.table(matrix(c(RMSE_1_In, E_IN_BIVARIATE, RMSE_2_In, RMSE_3_In, RMSE_4_In, RMSE_5_In,E_IN, RMSE_1_Out, E_OUT_BIVARIATE, RMSE_2_Out, RMSE_3_Out, RMSE_4_Out, RMSE_5_Out, E_OUT), ncol=7, byrow=TRUE))
-colnames(TABLE_VAL) <- c('Bivariate LINEAR','Bi LINEAR Reg', 'QUADRATIC', 'CUBIC', 'Square Root', 'SPLINE',"Multi Ridge-Reg")
+TABLE_VAL <- as.table(matrix(c(RMSE_1_In, E_IN_BIVARIATE, RMSE_2_In, RMSE_3_In, RMSE_4_In, RMSE_5_In, RMSE_1_Out, E_OUT_BIVARIATE, RMSE_2_Out, RMSE_3_Out, RMSE_4_Out, RMSE_5_Out), ncol=6, byrow=TRUE))
+colnames(TABLE_VAL) <- c('Bivariate LINEAR','Bi LINEAR Reg', 'QUADRATIC', 'CUBIC', 'Square Root', 'SPLINE')
 rownames(TABLE_VAL) <- c('RMSE_IN', 'RMSE_OUT')
 TABLE_VAL #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
 
-#The best in sample appears to be Spline, but best out of sample is Quadratic
+#The best in sample appears to be Spline, but best out of sample is Quadratic, with Regularization
+#Performing better than non-regularized
 
 #use the validation sample to conduct a "Non-contaminated" R^2.
 
 Validation_Partition$PRED_2_Out <- unname(predict(M2,Validation_Partition))
 RMSE_2_Validate <- sqrt(mean((Validation_Partition$PRED_2_Out - Validation_Partition$Gross)^2))
 RMSE_2_Validate
+
+col_of_ones_validate <- rep(1, dim(Validation_Partition)[1])  # Create intercept column
+X_validate <- as.matrix(cbind(col_of_ones_validate, Validation_Partition[, c("budget", "budget2")]))  # Add intercept
+Validation_Partition$PRED_6_Out <- unname(predict(ridge_model, newx = X_validate))  # Predict with Ridge
+#Validation_Partition$PRED_6_Out <- unname(predict(ridge_model,Validation_Partition))
+RMSE_6_Validate <- sqrt(mean((Validation_Partition$PRED_6_Out - Validation_Partition$Gross)^2))
+RMSE_6_Validate
 
 #############################
 <<<<<<< HEAD
@@ -587,60 +563,56 @@ Betas <- X_pseudo%*%y
 ###############################
 >>>>>>> 047753b21fe797d90eb19e979c160f2f960a2ba9
 
-#LET'S IMPLEMENT SOME REGULARIZATION RIDGE
+# ====== OLD MULTIVARIATE MOVED FROM ABOVE DOWN HERE ===================================
+#================================================================================
 
 training <- Training_Partition[, c("Gross", "budget2", "budget", "IMDB_Rating")]
 holdout <- Testing_Partition[, c("Gross", "budget2", "budget", "IMDB_Rating")]
-
 col_of_ones <- rep(1, dim(training)[1])
-
 X <- as.matrix(cbind(col_of_ones, training[-1]))
-
 y <- training[,1]
-
-library(glmnet)
 X_mat <- as.matrix(X)
 ridge_model <- glmnet(X_mat, y, alpha = 0)
 ridge_model
 
-library(glmnet)
-
 # Assuming X_mat is your matrix of predictors and y is your response variable
-
 # Perform cross-validated ridge regression (alpha = 0 for ridge)
 cv_ridge <- cv.glmnet(X_mat, y, alpha = 0)
-
 # Plot the cross-validation curve
-plot(cv_ridge)
+#plot(cv_ridge)
+
+#Plot RMSE rather than MSE
+# Get mean cross-validated errors (MSE)
+mse_values <- cv_ridge$cvm
+# Convert MSE to RMSE
+rmse_values <- sqrt(mse_values)
+# Get log(lambda) values
+log_lambda <- log(cv_ridge$lambda)
+# Plot RMSE vs log(lambda)
+# plot(log_lambda, rmse_values, type = "b", pch = 20, col = "blue",
+#      xlab = "log(Lambda)", ylab = "RMSE",
+#      main = "Cross-Validated RMSE vs log(Lambda)")
+# abline(v = log(cv_ridge$lambda.min), col = "red", lty = 2)  # Best lambda
 
 # Get the lambda that gives minimum mean cross-validated error
 best_lambda <- cv_ridge$lambda.min
 cat("Best lambda:", best_lambda, "\n")
-
 # If you want a slightly more regularized model (1 SE rule)
 lambda_1se <- cv_ridge$lambda.1se
 cat("1-SE lambda:", lambda_1se, "\n")
-
 ridge_model <- glmnet(X_mat, y, alpha = 0, lambda = best_lambda)
 ridge_model
-
 # E_IN using training data
 pred_train <- predict(ridge_model, newx = X_mat)
 E_IN <- sqrt(mean((y - pred_train)^2))
 E_IN
-
 # Prepare the holdout (test) set for prediction
 X_test <- as.matrix(cbind(rep(1, nrow(holdout)), holdout[, -1]))  # Add intercept term for test set
 y_test <- holdout[, 1]  # True values for the test set
-
 # E_OUT using test data (out-of-sample error)
 pred_test <- predict(ridge_model, newx = X_test)
 E_OUT <- sqrt(mean((y_test - pred_test)^2))  # RMSE for test data
 cat("E_OUT (RMSE for test data):", E_OUT, "\n")
-
-
-
-
 
 
 
