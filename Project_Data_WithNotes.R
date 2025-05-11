@@ -627,6 +627,36 @@ pred_reg_tune <- predict(reg_tree_tune, new_data = svm_testing) %>%
 #OUT-OF-SAMPLE ERROR ESTIMATES FROM yardstick OR ModelMetrics PACKAGE
 rmse(pred_reg_tune, estimate=.pred, truth=Gross)
 
+# ====== 5f tree-based ensemble model ==========================================================
+library(baguette) #FOR BAGGED TREES
+library(caret)
+
+spec_bagged <- bag_tree(min_n = 20 , #minimum number of observations for split
+                        tree_depth = 30, #max tree depth
+                        cost_complexity = 0.01, #regularization parameter
+                        class_cost = NULL)  %>% #for output class imbalance adjustment (binary data only)
+  set_mode("regression") %>% #can set to regression for numeric prediction
+  set_engine("rpart", times=100) #times = # OF ENSEMBLE MEMBERS IN FOREST
+spec_bagged
+
+#FITTING THE MODEL
+set.seed(123)
+#MODEL DESCRIPTION:
+fmla <- Gross ~.
+
+bagged_forest <- spec_bagged %>%
+  fit(formula = fmla, data = svm_training)
+print(bagged_forest)
+
+#GENERATE IN-SAMPLE PREDICTIONS ON THE TRAIN SET AND COMBINE WITH TRAIN DATA
+pred_class_bf_in <- predict(bagged_forest, new_data = svm_training, type="numeric") %>%
+  bind_cols(svm_training) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+
+#GENERATE OUT-OF-SAMPLE PREDICTIONS ON THE TEST SET AND COMBINE WITH TEST DATA
+pred_class_bf_out <- predict(bagged_forest, new_data = svm_testing, type="numeric") %>%
+  bind_cols(svm_testing) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+
+
 #############################
 #IMPLEMENTING REGULARIZATION#
 #############################
