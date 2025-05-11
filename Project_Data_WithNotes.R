@@ -1,10 +1,11 @@
-#install.packages("glmnet")
 
 # Load necessary libraries
+#install.packages("glmnet") #THIS IS NEEDED TO RUN glmnet(), needed for regularization
 library(dplyr)   # For data manipulation
 library(ggplot2) # For plotting
 library(mgcv) #FOR gam()
 library(tidyverse)
+
 
 # List all files in the directory (useful for troubleshooting)
 all_files <- list.files(recursive = TRUE, full.names = TRUE)
@@ -18,6 +19,7 @@ data2 <- read.csv("movies_updated.csv")
 # Load dataset 3
 data3 <- read.csv("movies_data.csv")
 
+#REDCATED DATASET 1 since its missing values is preventing useful interpretation of data.
 # Standardize column names
 #data1 <- data1 %>%
  # rename(
@@ -55,14 +57,13 @@ data2 <- data2 %>%
 
 #This is removing the "Min" and spacing in the Runtime in the data
 data2$Runtime <- as.numeric(gsub("[^0-9]", "", data2$Runtime))
+#The minutes were larger by a factor of 10 than they should have been
 data2$Runtime <- data2$Runtime/10
 
 
 # Standardize column names in data3, we saw that Gross was different than the actual
 #Gross value, causing an issue with negative "Gross" values
-
 #This Gross Value is incorrect, this is representing Budget - Box.Office
-
 
 data3 <- data3 %>%
   rename(
@@ -79,8 +80,6 @@ data3 <- data3 %>%
     Star4 = ,
     budget = Budget
   )
-
-#5.4.2025, need to remove Gross since that is actually not the revenue, but BoxOffice - Budget
 
 # Merge data2 and data3 on Series_Title
 merged_23 <- full_join(data2, data3, by = "Series_Title")
@@ -158,7 +157,7 @@ merged_all_no_duplicates <- merged_all %>%
 any(duplicated(merged_all_no_duplicates$Series_Title))  # Should return FALSE
 
 
-#MAIN DATAFRAME WILL BE Main_df
+#MAIN DATAFRAME WILL BE Main_df for clarity
 Main_df <- merged_all_no_duplicates
 
 
@@ -181,41 +180,39 @@ sum(!is.finite(Main_df$Gross))      # Count of Inf, -Inf, or NaN in Gross
 Main_df$budget2 <- Main_df$budget^2
 Main_df$budget3 <- Main_df$budget^3
 Main_df$budget4 <- Main_df$budget^.5
+Main_df$budgetLog <- log(Main_df$budget)
 
-  
-#THE ABOVE IS THE DATASET.
+#clean up budgetLog
+Main_df$budgetLog[Main_df$budgetLog == -Inf] <- 0
 
-#Question: Does the year affect the gross
-library(ggplot2)
+# view top three genres
+unique(Main_df$Genre)
+Main_df %>% count(Genre)
 
-# Plot Gross vs Released_Year (Inflation), easier to break records as time goes on?
-ggplot(merged_all_no_duplicates, aes(x = Released_Year, y = Gross)) +
-  geom_point() +  # Add scatter plot
-  labs(
-    title = "Gross by Year",
-    x = "Year",
-    y = "Gross Funds ($)"
-  ) +
-  theme_minimal()  # Clean theme
-#Bryan Test Commmit
-#5.4.2025
+# add dummy categorical vars for top three genres (plus horror)
+Main_df$Action[Main_df$Genre=='Action']<-1 #if it's action, code the action variable 1
+Main_df$Action[Main_df$Genre!='Action']<-0 #if it's not action, code the action variable 0
 
-#Code Chunk 6 For most of this to help
-#Regression
-#Begin by partitioning your original dataset for the regression task into three sets: a 
-#training partition and two holdout partitions.  One holdout partition will be for model 
-#selection (the validation partition).  One partition will be used to report the final model 
-#out-of-sample performance estimate (the testing partition).  I would recommend saving 
-#these three partitions using the write.table() or write.csv() commands (or making sure 
-#you’re all using the same random seed to generate the partitions) so that all group 
-#members start with the same training partition and same holdout partitions so everyone 
-#is making “apples to apples” comparisons. 
+Main_df$Drama[Main_df$Genre=='Drama']<-1 #if it's Drama, code the Drama variable 1
+Main_df$Drama[Main_df$Genre!='Drama']<-0 #if it's not Drama, code the Drama variable 0
+
+Main_df$Comedy[Main_df$Genre=='Comedy']<-1 #if it's Comedy, code the Comedy variable 1
+Main_df$Comedy[Main_df$Genre!='Comedy']<-0 #if it's not Comedy, code the Comedy variable 0
+
+Main_df$Horror[Main_df$Genre=='Horror']<-1 #if it's Horror, code the Horror variable 1
+Main_df$Horror[Main_df$Genre!='Horror']<-0 #if it's not Horror, code the Horror variable 0
 
 #Update Runtime to make it an integer
 Main_df$Runtime <- as.numeric(gsub(" min", "", Main_df$Runtime))
-
 Main_df <- Main_df[, c("Gross", setdiff(names(Main_df), "Gross"))]
-#Our dataset for now is: "merged_all_no_duplicates" 
+
+# ====== DATAFRAME Creation END ================================
+  
+#THE ABOVE IS THE DATASET.
+
+# ====== DATA PARTITIONING ================================
+
+
 
 #FRACTION OF DATA TO BE USED AS IN-SAMPLE TRAINING DATA
 p1<-.7 #70% FOR TRAINING / Validation, planning for 40% to train, 30% to validate
@@ -244,80 +241,90 @@ validation_ind <- sample(obs_count2, size = validation_size) #Same as above for 
 Validation_Partition <- Training[validation_ind,] #PULLS RANDOM ROWS FOR Validation 70% which we need to break again
 Training_Partition <- Training[-validation_ind,] #Remainder go to Training
 
-#Check to see if it adds up
+#Check to see if it adds up, should return TRUE
 obs_count == nrow(Validation_Partition) + nrow(Training_Partition) + nrow(Testing_Partition)
 #We now have: Training Partition 40%, Validation Partition 30%, and a Testing Partion 30%
 
-#BIVARIATE LINEAR MODEL - SIMPLE 1.A#
-#LINEAR REGRESSION#
+# ====== DATA PARTITIONING END================================
+
+
+#BIVARIATE LINEAR MODEL - SIMPLE
+# ====== 4a linear model ================================
 M1 <- lm(Gross~budget,Training_Partition)
 summary(M1)
-#Multiple R-squared:  0.5368
 
-#BIVARIATE TRANSFORMS 1.B#
+# ====== 4b linear model - Transformations ================================
 #QUADRATIC REGRESSION#
 M2 <- lm(Gross~budget + budget2,Training_Partition)
 summary(M2)
-#Multiple R-squared:  0.5334
 
 #CUBIC REGRESSION#
 M3 <- lm(Gross~budget + budget2 + budget3,Training_Partition)
 summary(M3)
-#Multiple R-squared:  0.4415
 
 #SQRT REGRESSION#
 M4 <- lm(Gross~budget4,Training_Partition)
 summary(M4)
-#Multiple R-squared:  0.3863
 
+# ====== 4c linear model ================================
 
-#############################
-#IMPLEMENTING REGULARIZATION#
-#############################
+#simplified dataframe in attempt to do regularization on multivariate
+library(glmnet) #needed for regularization function glmnet(), install library above
+training <- Training_Partition[, c("Gross", "budget", "budget2")] #REGULARIZE BIVARIATE JUST BUDGET VS GROSS#
+holdout <- Testing_Partition[, c("Gross", "budget", "budget2")] #REGULARIZE BIVARIATE JUST BUDGET VS GROSS#
+col_of_ones <- rep(1, dim(training)[1]) #Column of ones to include the intercept when we multiply matrix
+X <- as.matrix(cbind(col_of_ones, training[-1])) #bind the col of ones to the training dataset, except gross
+y <- training[,1] #matrix for "Gross"
+X_mat <- as.matrix(X) 
+ridge_model <- glmnet(X_mat, y, alpha = 0)
+ridge_model
+cv_ridge <- cv.glmnet(X_mat, y, alpha = 0)
+# Get the lambda that gives minimum mean cross-validated error
+best_lambda <- cv_ridge$lambda.min
+cat("Best lambda:", best_lambda, "\n")
+# If you want a slightly more regularized model (1 SE rule)
+lambda_1se <- cv_ridge$lambda.1se
+cat("1-SE lambda:", lambda_1se, "\n")
+ridge_model <- glmnet(X_mat, y, alpha = 0, lambda = best_lambda)
+ridge_model
+# E_IN using training data
+pred_train <- predict(ridge_model, newx = X_mat)
+E_IN_BIVARIATE <- sqrt(mean((y - pred_train)^2))
+E_IN_BIVARIATE
+# Prepare the holdout (test) set for prediction
+X_test <- as.matrix(cbind(rep(1, nrow(holdout)), holdout[, -1]))  # Add intercept term for test set
+y_test <- holdout[, 1]  # True values for the test set
+# E_OUT using test data (out-of-sample error)
+pred_test <- predict(ridge_model, newx = X_test)
+E_OUT_BIVARIATE <- sqrt(mean((y_test - pred_test)^2))  # RMSE for test data
+cat("E_OUT (RMSE for test data):", E_OUT_BIVARIATE, "\n")
 
-# #INITIALIZE EMPTY MATRICES FOR STORING PREDICTION AND ERRORS
-# PRED_IN <- matrix(NA, nrow = dim(Training_Partition)[1], ncol=length(lambda))
-# PRED_OUT <- matrix(NA, nrow = dim(Testing_Partition)[1], ncol=length(lambda))
-# E_IN <- matrix(NA, nrow = 1, ncol=length(lambda))
-# E_OUT <- matrix(NA, nrow = 1, ncol=length(lambda))
-# 
-# for (i in 1:length(lambda)){
-#   
-#   #COMPUTE PSEUDOINVERSE SOLUTION
-#   BETA_RIDGE[,i] <- solve(t(X)%*%X+lambda[i]*diag(dim(t(X)%*%X)[1]))%*%t(X)%*%y
-#   
-#   #COMPUTE PREDICTIONS IN AND OUT-OF-SAMPLE
-#   PRED_IN[,i] <- X%*%BETA_RIDGE[,i]
-#   PRED_OUT[,i] <- X_holdout%*%BETA_RIDGE[,i]
-#   
-#   #COMPUTE PREDICTION ERRORS (MSE) IN AND OUT-OF-SAMPLE
-#   E_IN[i] <- sqrt(mean((y-PRED_IN[,i])^2))
-#   E_OUT[i] <- sqrt(mean((y_holdout-PRED_OUT[,i])^2))
-# }
-# 
-# #STORE ERRORS VS. LAMBDAS IN SEPARATE DATAFRAMES
-# df_IN <- data.frame(cbind(Error=as.numeric(E_IN), Lambda=lambda))
-# df_OUT <- data.frame(cbind(Error=as.numeric(E_OUT), Lambda=lambda))
-# 
-# ggplot(df_IN, aes(y=Error, x=Lambda)) +
-#   geom_line(color='blue') +
-#   geom_line(data=df_OUT, color='red') +
-#   ggtitle("E_IN & E_OUT VS. REGULARIZATION PARAMETER (LAMBDA)") +
-#   theme(plot.title = element_text(hjust = .5))
-# 
-# #REPORT MINIMUM E_OUT ESTIMATE FROM BEST REGULARIZED MODEL
-# (min(df_OUT$Error))
-# 
-# #RECOVER OPTIMAL LAMBDA
-# (Opt_Lambda <- df_OUT$Lambda[which.min(df_OUT$Error)])
+# ====== 4c linear model end================================
 
-#BIVARIATE 1.D - GENERAL ADDIDITIVE STRUCTURE#
-#MODEL 6: Y=s(x) SPLINE MODEL
+# ====== 4d General Addiditve Structure ===================================
+
+#MODEL 5: Y=s(x) SPLINE MODEL
 M5 <- gam(Gross ~ s(budget), data = Training_Partition, family = 'gaussian')
 summary(M5) #generates summary diagnostic output
-#R-sq.(adj) =   0.58
 
+# ====== 4e PLOT the Above ===================================
+x_grid <- seq(min(Training_Partition$budget), max(Training_Partition$budget), length.out = 300)
+#x_grid <- seq(0,80,.1) #CREATES GRID OF X-AXIS VALUES
+#Training Datapoints plotted
+plot(Training_Partition$Gross ~ Training_Partition$budget, col='blue')
 
+predictions_1 <- predict(M1, data.frame(budget = x_grid))
+predictions_2 <- predict(M2, data.frame(budget = x_grid, budget2 = x_grid^2))
+predictions_3 <- predict(M3, data.frame(budget = x_grid, budget2 = x_grid^2, budget3 = x_grid^3))
+predictions_5 <- predict(M5, data.frame(budget = x_grid), type = 'response')
+
+lines(x_grid, predictions_1, col='blue', lwd=3) #PLOTS M1
+lines(x_grid, predictions_2, col='lightgreen', lwd=3) #PLOTS M2
+lines(x_grid, predictions_3, col='green', lwd=3) #PLOTS M3
+lines(x_grid, predictions_5, col='yellow', lwd=3) #PLOTS M5 CV RIDGE on Bivariate
+
+#Test Datapoints plotted
+points(Testing_Partition$Gross ~ Testing_Partition$budget, col='red', pch=3, cex=.5)
 
 #These are named nums, which cause issues, use unname() function to fix
 Training_Partition$PRED_1_IN <- unname(predict(M1, Training_Partition))
@@ -359,27 +366,116 @@ TABLE_VAL <- as.table(matrix(c(RMSE_1_In, RMSE_2_In, RMSE_3_In, RMSE_4_In, RMSE_
 colnames(TABLE_VAL) <- c('LINEAR', 'QUADRATIC', 'CUBIC', 'Square Root', 'SPLINE')
 rownames(TABLE_VAL) <- c('RMSE_IN', 'RMSE_OUT')
 TABLE_VAL #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
+
+
+#================================================================================
+#simplified dataframe in attempt to do regularization on multivariate
+training <- Training_Partition[, c("Gross", "budget2", "budget", "IMDB_Rating")]
+holdout <- Testing_Partition[, c("Gross", "budget2", "budget", "IMDB_Rating")]
+col_of_ones <- rep(1, dim(training)[1])
+X <- as.matrix(cbind(col_of_ones, training[-1]))
+y <- training[,1]
+X_mat <- as.matrix(X)
+ridge_model <- glmnet(X_mat, y, alpha = 0)
+ridge_model
+
+# Assuming X_mat is your matrix of predictors and y is your response variable
+# Perform cross-validated ridge regression (alpha = 0 for ridge)
+cv_ridge <- cv.glmnet(X_mat, y, alpha = 0)
+# Plot the cross-validation curve
+plot(cv_ridge)
+
+#Plot RMSE rather than MSE
+# Get mean cross-validated errors (MSE)
+mse_values <- cv_ridge$cvm
+# Convert MSE to RMSE
+rmse_values <- sqrt(mse_values)
+# Get log(lambda) values
+log_lambda <- log(cv_ridge$lambda)
+# Plot RMSE vs log(lambda)
+plot(log_lambda, rmse_values, type = "b", pch = 20, col = "blue",
+     xlab = "log(Lambda)", ylab = "RMSE",
+     main = "Cross-Validated RMSE vs log(Lambda)")
+abline(v = log(cv_ridge$lambda.min), col = "red", lty = 2)  # Best lambda
+
+# Get the lambda that gives minimum mean cross-validated error
+best_lambda <- cv_ridge$lambda.min
+cat("Best lambda:", best_lambda, "\n")
+# If you want a slightly more regularized model (1 SE rule)
+lambda_1se <- cv_ridge$lambda.1se
+cat("1-SE lambda:", lambda_1se, "\n")
+ridge_model <- glmnet(X_mat, y, alpha = 0, lambda = best_lambda)
+ridge_model
+# E_IN using training data
+pred_train <- predict(ridge_model, newx = X_mat)
+E_IN <- sqrt(mean((y - pred_train)^2))
+E_IN
+# Prepare the holdout (test) set for prediction
+X_test <- as.matrix(cbind(rep(1, nrow(holdout)), holdout[, -1]))  # Add intercept term for test set
+y_test <- holdout[, 1]  # True values for the test set
+# E_OUT using test data (out-of-sample error)
+pred_test <- predict(ridge_model, newx = X_test)
+E_OUT <- sqrt(mean((y_test - pred_test)^2))  # RMSE for test data
+cat("E_OUT (RMSE for test data):", E_OUT, "\n")
+TABLE_VAL <- as.table(matrix(c(RMSE_1_In, E_IN_BIVARIATE, RMSE_2_In, RMSE_3_In, RMSE_4_In, RMSE_5_In,E_IN, RMSE_1_Out, E_OUT_BIVARIATE, RMSE_2_Out, RMSE_3_Out, RMSE_4_Out, RMSE_5_Out, E_OUT), ncol=7, byrow=TRUE))
+colnames(TABLE_VAL) <- c('Bivariate LINEAR','Bi LINEAR Reg', 'QUADRATIC', 'CUBIC', 'Square Root', 'SPLINE',"Multi Ridge-Reg")
+rownames(TABLE_VAL) <- c('RMSE_IN', 'RMSE_OUT')
+TABLE_VAL #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
+
 #The best in sample appears to be Spline, but best out of sample is Quadratic
 
 #use the validation sample to conduct a "Non-contaminated" R^2.
-
-
 
 Validation_Partition$PRED_2_Out <- unname(predict(M2,Validation_Partition))
 RMSE_2_Validate <- sqrt(mean((Validation_Partition$PRED_2_Out - Validation_Partition$Gross)^2))
 RMSE_2_Validate
 
 #############################
+<<<<<<< HEAD
 #MULTIVARIATE#
+=======
+#    5. MULTIVARIATE        #
+>>>>>>> 047753b21fe797d90eb19e979c160f2f960a2ba9
 #############################
 
+# ====== 5a linear model ================================
+MT0 <- lm(Gross~IMDB_Rating + budget + Action + Comedy + Drama + Horror,Training_Partition)
+summary(MT0)
+#Multiple R-squared:  0.559
+
+PRED_0_IN <- predict(MT0, Training_Partition) 
+PRED_0_OUT <- predict(MT0, Testing_Partition) 
+
+Training_Partition$PRED_0_IN_Num <- unname(PRED_0_IN)  #fix an issue where we had named numerics, causing NA for Pred_IN
+Training_Partition$Gross_Num <- (Training_Partition$Gross) 
+
+# Strip names before computing error
+Testing_Partition$PRED_0_OUT_Num <- unname(PRED_0_OUT)  #fix an issue where we had class = named numerics, causing NA for Pred_IN
+Testing_Partition$Gross_Num <- (Testing_Partition$Gross) #fix an issue where we had class = named numerics, causing NA for Pred_IN
+
+# calculate RMSE
+RMSE_0_In <- sqrt(mean((Training_Partition$PRED_0_IN_Num - Training_Partition$Gross_Num)^2))
+RMSE_0_In
+RMSE_0_Out <- sqrt(mean((Testing_Partition$PRED_0_OUT_Num - Testing_Partition$Gross_Num)^2))
+RMSE_0_Out
+
+# ====== 5b linear model ================================
+
+
+# ====== 5c model includes transformations budget2 ================================
 #Creation of a simple Regression model, y = mx + b
+<<<<<<< HEAD
 M1 <- lm(Gross~IMDB_Rating + budget + budget2,Training_Partition)
 summary(M1)
 #Multiple R-squared:  0.5619
+=======
+MT1 <- lm(Gross~IMDB_Rating + budget + budget2 + budget3 + Action + Drama + Horror, Training_Partition)
+summary(MT1)
+#Multiple R-squared:  0.5693
+>>>>>>> 047753b21fe797d90eb19e979c160f2f960a2ba9
 
-PRED_1_IN <- predict(M1, Training_Partition) 
-PRED_1_OUT <- predict(M1, Testing_Partition) 
+PRED_1_IN <- predict(MT1, Training_Partition) 
+PRED_1_OUT <- predict(MT1, Testing_Partition) 
 
 Training_Partition$PRED_1_IN_Num <- unname(PRED_1_IN)  #fix an issue where we had named numerics, causing NA for Pred_IN
 Training_Partition$Gross_Num <- (Training_Partition$Gross) 
@@ -388,10 +484,108 @@ Training_Partition$Gross_Num <- (Training_Partition$Gross)
 Testing_Partition$PRED_1_OUT_Num <- unname(PRED_1_OUT)  #fix an issue where we had class = named numerics, causing NA for Pred_IN
 Testing_Partition$Gross_Num <- (Testing_Partition$Gross) #fix an issue where we had class = named numerics, causing NA for Pred_IN
 
+# calculate RMSE
+RMSE_1_In <- sqrt(mean((Training_Partition$PRED_1_IN_Num - Training_Partition$Gross_Num)^2))
+RMSE_1_In
+RMSE_1_Out <- sqrt(mean((Testing_Partition$PRED_1_OUT_Num - Testing_Partition$Gross_Num)^2))
+RMSE_1_Out
 
+<<<<<<< HEAD
 #############################
 #IMPLEMENTING REGULARIZATION#
 #############################
+=======
+# ====== 5d SVM ==========================================================
+library(e1071) #SVM LIBRARY
+
+svm_training <- Training_Partition[, c("Gross", "IMDB_Rating", "budget", "budget2")]
+svm_testing <- Testing_Partition[, c("Gross", "IMDB_Rating", "budget", "budget2")]
+# svm_training$Gross <- log(svm_training$Gross)
+# svm_training$budget <- log(svm_training$budget)
+# svm_training$budget2 <- log(svm_training$budget2)
+# 
+# svm_testing$Gross <- log(svm_testing$Gross)
+# svm_testing$budget <- log(svm_testing$budget)
+# svm_testing$budget2 <- log(svm_testing$budget2)
+
+#BUILD SVM CLASSIFIER
+  # hard to get it to run without hitting max iterations, decreased cost and set SCALE to TRUE, kernel = linear
+SVM_Model<- svm(Gross~IMDB_Rating + budget + budget2, 
+                data = svm_training, 
+                type = "eps-regression", #set to "eps-regression" for numeric prediction
+                kernel = "linear",
+                cost=0.1,                   #REGULARIZATION PARAMETER
+                gamma = 1/(ncol(svm_training)-1), #DEFAULT KERNEL PARAMETER
+                coef0 = 0,                    #DEFAULT KERNEL PARAMETER
+                degree=2,                     #POLYNOMIAL KERNEL PARAMETER
+                scale = TRUE)                #RESCALE DATA? (SET TO TRUE TO NORMALIZE)
+
+print(SVM_Model) #DIAGNOSTIC SUMMARY
+
+#REPORT IN AND OUT-OF-SAMPLE ERRORS (1-ACCURACY)
+(E_IN_PRETUNE<-1-mean(unname(predict(SVM_Model, svm_training))==Training_Partition$Gross))
+(E_OUT_PRETUNE<-1-mean(unname(predict(SVM_Model, svm_testing))==Testing_Partition$Gross))
+
+#TUNING THE SVM BY CROSS-VALIDATION
+tune_control<-tune.control(cross=10) #SET K-FOLD CV PARAMETERS
+set.seed(12)
+TUNE <- tune.svm(x = svm_training[,-1],
+                 y = svm_training[,1],
+                 type = "eps-regression",
+                 kernel = "radial",
+                 tunecontrol=tune_control,
+                 cost=c(.01, .1, 1, 10, 100, 1000), #REGULARIZATION PARAMETER
+                 gamma = 1/(ncol(svm_training)-1), #KERNEL PARAMETER
+                 coef0 = 0,           #KERNEL PARAMETER
+                 degree = 2)          #POLYNOMIAL KERNEL PARAMETER
+
+print(TUNE) #OPTIMAL TUNING PARAMETERS FROM VALIDATION PROCEDURE
+
+SVM_Model_tuned<- svm(Gross~IMDB_Rating + budget + budget2, 
+                data = svm_training, 
+                type = "eps-regression", #set to "eps-regression" for numeric prediction
+                kernel = "radial",
+                cost=10,                   #REGULARIZATION PARAMETER
+                gamma = 0.333, #DEFAULT KERNEL PARAMETER
+                coef0 = 0,                    #DEFAULT KERNEL PARAMETER
+                degree=2,                     #POLYNOMIAL KERNEL PARAMETER
+                scale = TRUE)                #RESCALE DATA? (SET TO TRUE TO NORMALIZE)
+
+print(SVM_Model_tuned) #DIAGNOSTIC SUMMARY
+
+#REPORT IN AND OUT-OF-SAMPLE ERRORS (1-ACCURACY)
+(E_IN_TUNED<-1-mean(unname(predict(SVM_Model_tuned, svm_training))==Training_Partition$Gross))
+(E_OUT_TUNED<-1-mean(unname(predict(SVM_Model_tuned, svm_testing))==Testing_Partition$Gross))
+
+
+#STEP 1: FORM THE INPUT MATRIX X:
+
+#STEP 1.1: MAKE A COLUMN OF ONES TO INCLUDE AS REGRESSORS FOR INTERCEPT
+col_of_ones <- rep(1, dim(Training_Partition)[1])
+
+#STEP 1.2: BIND COLUMN OF ONES WITH OTHER INPUT DATA COLUMNS
+#AND COERCE TO MATRIX OBJECT
+X <- as.matrix(cbind(col_of_ones, Training_Partition[,-1]))
+
+#STEP 2: FORM THE OUTPUT VECTOR y
+y <- Training_Partition[,1]
+
+# Convert to a numeric matrix
+X_numeric <- as.matrix(X)
+X_numeric <- apply(X_numeric, 2, as.numeric)  # Ensures each column is numeric
+
+#STEP 3: COMPUTE THE PSEUDOINVERSE MATRIX
+# Now compute the pseudoinverse
+X_pseudo <- solve(t(X_numeric) %*% X_numeric) %*% t(X_numeric)
+# X_pseudo <- solve(t(X)%*%X)%*%t(X)
+
+#STEP 4: MULTIPLY THE PSEUDOINVERSE MATRIX BY THE OUTPUT VECTOR
+Betas <- X_pseudo%*%y
+
+###############################
+# IMPLEMENTING REGULARIZATION #
+###############################
+>>>>>>> 047753b21fe797d90eb19e979c160f2f960a2ba9
 
 #LET'S IMPLEMENT SOME REGULARIZATION RIDGE
 
@@ -607,3 +801,44 @@ cat("E_OUT (RMSE for test data):", E_OUT, "\n")
 # # RMSE_1_OUT <- sqrt(mean((PRED_1_OUT_vec[valid_idx_out] - Gross_OUT_vec[valid_idx_out])^2))
 # # RMSE_1_OUT
 # # #91350964 something is wrong here
+
+
+#############################
+#IMPLEMENTING REGULARIZATION#
+#############################
+
+# #INITIALIZE EMPTY MATRICES FOR STORING PREDICTION AND ERRORS
+# PRED_IN <- matrix(NA, nrow = dim(Training_Partition)[1], ncol=length(lambda))
+# PRED_OUT <- matrix(NA, nrow = dim(Testing_Partition)[1], ncol=length(lambda))
+# E_IN <- matrix(NA, nrow = 1, ncol=length(lambda))
+# E_OUT <- matrix(NA, nrow = 1, ncol=length(lambda))
+# 
+# for (i in 1:length(lambda)){
+#   
+#   #COMPUTE PSEUDOINVERSE SOLUTION
+#   BETA_RIDGE[,i] <- solve(t(X)%*%X+lambda[i]*diag(dim(t(X)%*%X)[1]))%*%t(X)%*%y
+#   
+#   #COMPUTE PREDICTIONS IN AND OUT-OF-SAMPLE
+#   PRED_IN[,i] <- X%*%BETA_RIDGE[,i]
+#   PRED_OUT[,i] <- X_holdout%*%BETA_RIDGE[,i]
+#   
+#   #COMPUTE PREDICTION ERRORS (MSE) IN AND OUT-OF-SAMPLE
+#   E_IN[i] <- sqrt(mean((y-PRED_IN[,i])^2))
+#   E_OUT[i] <- sqrt(mean((y_holdout-PRED_OUT[,i])^2))
+# }
+# 
+# #STORE ERRORS VS. LAMBDAS IN SEPARATE DATAFRAMES
+# df_IN <- data.frame(cbind(Error=as.numeric(E_IN), Lambda=lambda))
+# df_OUT <- data.frame(cbind(Error=as.numeric(E_OUT), Lambda=lambda))
+# 
+# ggplot(df_IN, aes(y=Error, x=Lambda)) +
+#   geom_line(color='blue') +
+#   geom_line(data=df_OUT, color='red') +
+#   ggtitle("E_IN & E_OUT VS. REGULARIZATION PARAMETER (LAMBDA)") +
+#   theme(plot.title = element_text(hjust = .5))
+# 
+# #REPORT MINIMUM E_OUT ESTIMATE FROM BEST REGULARIZED MODEL
+# (min(df_OUT$Error))
+# 
+# #RECOVER OPTIMAL LAMBDA
+# (Opt_Lambda <- df_OUT$Lambda[which.min(df_OUT$Error)])
