@@ -550,16 +550,16 @@ library(tidymodels)
 library(rpart.plot)
 #SPECIFYING THE regression TREE MODEL
 
-class_spec <- decision_tree(min_n = 20 , #minimum number of observations for split
+reg_spec <- decision_tree(min_n = 20 , #minimum number of observations for split
                             tree_depth = 30, #max tree depth
                             cost_complexity = 0.01)  %>% #regularization parameter
   set_engine("rpart") %>%
   set_mode("regression")
-print(class_spec)
+print(reg_spec)
 
 #ESTIMATING THE MODEL 
 reg_fmla <- Gross ~ .
-reg_tree <- class_spec %>%
+reg_tree <- reg_spec %>%
   fit(formula = reg_fmla, data = svm_training)
 print(reg_tree)
 
@@ -569,7 +569,63 @@ reg_tree$fit %>%
 
 plotcp(reg_tree$fit)
 
+#GENERATE PREDICTIONS AND COMBINE WITH TEST SET
+pred_reg <- predict(reg_tree, new_data = svm_testing) %>%
+  bind_cols(svm_testing)
 
+#OUT-OF-SAMPLE ERROR ESTIMATES FROM yardstick OR ModelMetrics PACKAGE
+rmse(pred_reg, estimate=.pred, truth=Gross)
+
+# TUNING TREE ------------------
+
+#BLANK TREE SPECIFICATION FOR TUNING
+tree_spec <- decision_tree(min_n = tune(),
+                           tree_depth = tune(),
+                           cost_complexity= tune()) %>%
+  set_engine("rpart") %>%
+  set_mode("regression")
+
+#CREATING A TUNING PARAMETER GRID
+tree_grid <- grid_regular(parameters(tree_spec), levels = 3)
+
+set.seed(123) #SET SEED FOR REPRODUCIBILITY WITH CROSS-VALIDATION
+tune_results <- tune_grid(tree_spec,
+                          reg_fmla, #MODEL FORMULA
+                          resamples = vfold_cv(svm_training, v=3), #RESAMPLES / FOLDS
+                          grid = tree_grid, #GRID
+                          metrics = metric_set(rmse, rsq)) #BENCHMARK METRIC
+
+#RETRIEVE OPTIMAL PARAMETERS FROM CROSS-VALIDATION
+best_params <- select_best(tune_results)
+best_params
+
+# NEW TUNED TREE ---------------------
+
+reg_spec_tune <- decision_tree(min_n = 40 , #minimum number of observations for split
+                          tree_depth = 8, #max tree depth
+                          cost_complexity = 0.0000000001)  %>% #regularization parameter
+  set_engine("rpart") %>%
+  set_mode("regression")
+print(reg_spec_tune)
+
+#ESTIMATING THE MODEL 
+reg_fmla_tune <- Gross ~ .
+reg_tree_tune <- reg_spec_tune %>%
+  fit(formula = reg_fmla_tune, data = svm_training)
+print(reg_tree_tune)
+
+#VISUALIZING THE TREE MODEL:
+reg_tree_tune$fit %>%
+  rpart.plot(type = 2,roundint = FALSE)
+
+plotcp(reg_tree_tune$fit)
+
+#GENERATE PREDICTIONS AND COMBINE WITH TEST SET
+pred_reg_tune <- predict(reg_tree_tune, new_data = svm_testing) %>%
+  bind_cols(svm_testing)
+
+#OUT-OF-SAMPLE ERROR ESTIMATES FROM yardstick OR ModelMetrics PACKAGE
+rmse(pred_reg_tune, estimate=.pred, truth=Gross)
 
 #############################
 #IMPLEMENTING REGULARIZATION#
