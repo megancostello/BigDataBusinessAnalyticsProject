@@ -431,11 +431,7 @@ RMSE_2_Validate <- sqrt(mean((Validation_Partition$PRED_2_Out - Validation_Parti
 RMSE_2_Validate
 
 #############################
-<<<<<<< HEAD
-#MULTIVARIATE#
-=======
 #    5. MULTIVARIATE        #
->>>>>>> 047753b21fe797d90eb19e979c160f2f960a2ba9
 #############################
 
 # ====== 5a linear model ================================
@@ -459,20 +455,14 @@ RMSE_0_In
 RMSE_0_Out <- sqrt(mean((Testing_Partition$PRED_0_OUT_Num - Testing_Partition$Gross_Num)^2))
 RMSE_0_Out
 
-# ====== 5b linear model ================================
+# ====== 5b linear model apply regularization ================================
 
 
 # ====== 5c model includes transformations budget2 ================================
 #Creation of a simple Regression model, y = mx + b
-<<<<<<< HEAD
-M1 <- lm(Gross~IMDB_Rating + budget + budget2,Training_Partition)
-summary(M1)
-#Multiple R-squared:  0.5619
-=======
 MT1 <- lm(Gross~IMDB_Rating + budget + budget2 + budget3 + Action + Drama + Horror, Training_Partition)
 summary(MT1)
 #Multiple R-squared:  0.5693
->>>>>>> 047753b21fe797d90eb19e979c160f2f960a2ba9
 
 PRED_1_IN <- predict(MT1, Training_Partition) 
 PRED_1_OUT <- predict(MT1, Testing_Partition) 
@@ -490,11 +480,8 @@ RMSE_1_In
 RMSE_1_Out <- sqrt(mean((Testing_Partition$PRED_1_OUT_Num - Testing_Partition$Gross_Num)^2))
 RMSE_1_Out
 
-<<<<<<< HEAD
-#############################
-#IMPLEMENTING REGULARIZATION#
-#############################
-=======
+
+
 # ====== 5d SVM ==========================================================
 library(e1071) #SVM LIBRARY
 
@@ -556,6 +543,10 @@ print(SVM_Model_tuned) #DIAGNOSTIC SUMMARY
 #REPORT IN AND OUT-OF-SAMPLE ERRORS (1-ACCURACY)
 (E_IN_TUNED<-1-mean(unname(predict(SVM_Model_tuned, svm_training))==Training_Partition$Gross))
 (E_OUT_TUNED<-1-mean(unname(predict(SVM_Model_tuned, svm_testing))==Testing_Partition$Gross))
+
+#############################
+#IMPLEMENTING REGULARIZATION#
+#############################
 
 
 #STEP 1: FORM THE INPUT MATRIX X:
