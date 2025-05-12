@@ -459,8 +459,8 @@ RMSE_MT0_Out
 
 #REGULARIZATION RIDGE
 
-training <- Training_Partition[, c("Gross", "budget2", "budget", "IMDB_Rating")]
-holdout <- Testing_Partition[, c("Gross", "budget2", "budget", "IMDB_Rating")]
+training <- Training_Partition[, c("Gross", "Comedy", "Drama", "Action", "Horror", "budget", "IMDB_Rating")]
+holdout <- Testing_Partition[, c("Gross", "Comedy", "Drama", "Action", "Horror", "budget", "IMDB_Rating")]
 
 col_of_ones <- rep(1, dim(training)[1])
 
