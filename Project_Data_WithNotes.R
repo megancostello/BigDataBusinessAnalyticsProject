@@ -386,7 +386,7 @@ TABLE_VAL #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
 #================================================================================
 
 TABLE_VAL <- as.table(matrix(c(RMSE_1_In, E_IN_BIVARIATE, RMSE_2_In, RMSE_3_In, RMSE_4_In, RMSE_5_In, RMSE_1_Out, E_OUT_BIVARIATE, RMSE_2_Out, RMSE_3_Out, RMSE_4_Out, RMSE_5_Out), ncol=6, byrow=TRUE))
-colnames(TABLE_VAL) <- c('Bivariate LINEAR','Bi LINEAR Reg', 'QUADRATIC', 'CUBIC', 'Square Root', 'SPLINE')
+colnames(TABLE_VAL) <- c('Bivariate LINEAR','Quad Reg', 'QUADRATIC', 'CUBIC', 'Square Root', 'SPLINE')
 rownames(TABLE_VAL) <- c('RMSE_IN', 'RMSE_OUT')
 TABLE_VAL #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
 
