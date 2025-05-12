@@ -450,10 +450,10 @@ Testing_Partition$PRED_0_OUT_Num <- unname(PRED_0_OUT)  #fix an issue where we h
 Testing_Partition$Gross_Num <- (Testing_Partition$Gross) #fix an issue where we had class = named numerics, causing NA for Pred_IN
 
 # calculate RMSE
-RMSE_0_In <- sqrt(mean((Training_Partition$PRED_0_IN_Num - Training_Partition$Gross_Num)^2))
-RMSE_0_In
-RMSE_0_Out <- sqrt(mean((Testing_Partition$PRED_0_OUT_Num - Testing_Partition$Gross_Num)^2))
-RMSE_0_Out
+RMSE_MT0_In <- sqrt(mean((Training_Partition$PRED_0_IN_Num - Training_Partition$Gross_Num)^2))
+RMSE_MT0_In
+RMSE_MT0_Out <- sqrt(mean((Testing_Partition$PRED_0_OUT_Num - Testing_Partition$Gross_Num)^2))
+RMSE_MT0_Out
 
 # ====== 5b linear model apply regularization ================================
 
@@ -475,10 +475,10 @@ Testing_Partition$PRED_1_OUT_Num <- unname(PRED_1_OUT)  #fix an issue where we h
 Testing_Partition$Gross_Num <- (Testing_Partition$Gross) #fix an issue where we had class = named numerics, causing NA for Pred_IN
 
 # calculate RMSE
-RMSE_1_In <- sqrt(mean((Training_Partition$PRED_1_IN_Num - Training_Partition$Gross_Num)^2))
-RMSE_1_In
-RMSE_1_Out <- sqrt(mean((Testing_Partition$PRED_1_OUT_Num - Testing_Partition$Gross_Num)^2))
-RMSE_1_Out
+RMSE_MT1_In <- sqrt(mean((Training_Partition$PRED_1_IN_Num - Training_Partition$Gross_Num)^2))
+RMSE_MT1_In
+RMSE_MT1_Out <- sqrt(mean((Testing_Partition$PRED_1_OUT_Num - Testing_Partition$Gross_Num)^2))
+RMSE_MT1_Out
 
 
 
@@ -543,6 +543,20 @@ print(SVM_Model_tuned) #DIAGNOSTIC SUMMARY
 #REPORT IN AND OUT-OF-SAMPLE ERRORS (1-ACCURACY)
 (E_IN_TUNED<-1-mean(unname(predict(SVM_Model_tuned, svm_training))==Training_Partition$Gross))
 (E_OUT_TUNED<-1-mean(unname(predict(SVM_Model_tuned, svm_testing))==Testing_Partition$Gross))
+
+#GENERATE PREDICTIONS 
+preds_svm_in <- predict(SVM_Model_tuned, svm_training)%>%
+  bind_cols(svm_training)
+preds_svm_out <- predict(SVM_Model_tuned, svm_testing)%>%
+  bind_cols(svm_testing)
+
+# Function to compute RMSE manually
+rmse_manual <- function(actual, predicted) {
+  sqrt(mean((actual - predicted)^2))
+}
+
+rmse_svm_in <- rmse_manual(preds_svm_in$Gross, preds_svm_in$...1)
+rmse_svm_out <- rmse_manual(preds_svm_out$Gross, preds_svm_out$...1)
 
 # ====== 5e regression tree ==========================================================
 
@@ -621,11 +635,16 @@ reg_tree_tune$fit %>%
 plotcp(reg_tree_tune$fit)
 
 #GENERATE PREDICTIONS AND COMBINE WITH TEST SET
-pred_reg_tune <- predict(reg_tree_tune, new_data = svm_testing) %>%
+pred_reg_in_tune <- predict(reg_tree_tune, new_data = svm_training) %>%
+  bind_cols(svm_training)
+
+#GENERATE PREDICTIONS AND COMBINE WITH TEST SET
+pred_reg_out_tune <- predict(reg_tree_tune, new_data = svm_testing) %>%
   bind_cols(svm_testing)
 
 #OUT-OF-SAMPLE ERROR ESTIMATES FROM yardstick OR ModelMetrics PACKAGE
-rmse(pred_reg_tune, estimate=.pred, truth=Gross)
+rmse_tree_in <- rmse(pred_reg_in_tune, estimate=.pred, truth=Gross)
+rmse_tree_out <- rmse(pred_reg_out_tune, estimate=.pred, truth=Gross)
 
 # ====== 5f tree-based ensemble model ==========================================================
 library(baguette) #FOR BAGGED TREES
@@ -713,6 +732,13 @@ pred_class_bftune_out <- predict(bagged_forest_tune, new_data = svm_testing, typ
 
 rmse_bftune_in <- rmse(pred_class_bftune_in, truth = Gross, estimate = .pred)
 rmse_bftune_out <- rmse(pred_class_bftune_out, truth = Gross, estimate = .pred)
+
+# ====== 5g RMSE table ==========================================================
+
+TABLE_MULTIVAR_RMSE <- as.table(matrix(c(RMSE_MT0_In, RMSE_MT1_In, rmse_svm_in, rmse_tree_in$.estimate, rmse_bftune_in$.estimate, RMSE_MT0_Out, RMSE_MT1_Out, rmse_svm_out, rmse_tree_out$.estimate, rmse_bftune_out$.estimate), ncol=5, byrow=TRUE))
+colnames(TABLE_MULTIVAR_RMSE) <- c('LINEAR', 'NONLINEAR', 'SVM', 'TREE', 'BAGGED TREE')
+rownames(TABLE_MULTIVAR_RMSE) <- c('RMSE_IN', 'RMSE_OUT')
+TABLE_MULTIVAR_RMSE #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
 
 #############################
 #IMPLEMENTING REGULARIZATION#
