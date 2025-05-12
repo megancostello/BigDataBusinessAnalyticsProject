@@ -656,6 +656,63 @@ pred_class_bf_in <- predict(bagged_forest, new_data = svm_training, type="numeri
 pred_class_bf_out <- predict(bagged_forest, new_data = svm_testing, type="numeric") %>%
   bind_cols(svm_testing) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
 
+# TUNING BAGGED TREE ------------------
+
+#BLANK TREE SPECIFICATION FOR TUNING
+
+bag_model <- bag_tree(min_n = tune() , #minimum number of observations for split
+                        tree_depth = tune(), #max tree depth
+                        cost_complexity = tune(), #regularization parameter
+                        class_cost = NULL)  %>% #for output class imbalance adjustment (binary data only)
+  set_mode("regression") %>% #can set to regression for numeric prediction
+  set_engine("rpart", times=100) #times = # OF ENSEMBLE MEMBERS IN FOREST
+bag_model
+
+workflow_spec <- workflow() %>%
+  add_model(bag_model) %>%
+  add_recipe(recipe(Gross ~ ., data = svm_training))
+
+folds <- vfold_cv(svm_training, v = 5)
+
+# Grid of hyperparameters
+grid_vals <- grid_regular(
+  min_n(range = c(2, 10)),
+  tree_depth(range = c(1, 10)),
+  cost_complexity(range = c(0, 1)),
+  levels = 4)
+
+tuned_results <- tune_grid(
+  workflow_spec,
+  resamples = folds,
+  grid = grid_vals,
+  metrics = metric_set(rmse)
+)
+
+best_params <- select_best(tuned_results)
+best_params
+
+spec_bagged_tune <- bag_tree(min_n = 7 , #minimum number of observations for split
+                        tree_depth = 4, #max tree depth
+                        cost_complexity = 4.64, #regularization parameter
+                        class_cost = NULL)  %>% #for output class imbalance adjustment (binary data only)
+  set_mode("regression") %>% #can set to regression for numeric prediction
+  set_engine("rpart", times=100) #times = # OF ENSEMBLE MEMBERS IN FOREST
+spec_bagged_tune
+
+bagged_forest_tune <- spec_bagged_tune %>%
+  fit(formula = fmla, data = svm_training)
+print(bagged_forest_tune)
+
+#GENERATE IN-SAMPLE PREDICTIONS ON THE TRAIN SET AND COMBINE WITH TRAIN DATA
+pred_class_bftune_in <- predict(bagged_forest_tune, new_data = svm_training, type="numeric") %>%
+  bind_cols(svm_training) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+
+#GENERATE OUT-OF-SAMPLE PREDICTIONS ON THE TEST SET AND COMBINE WITH TEST DATA
+pred_class_bftune_out <- predict(bagged_forest_tune, new_data = svm_testing, type="numeric") %>%
+  bind_cols(svm_testing) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+
+rmse_bftune_in <- rmse(pred_class_bftune_in, truth = Gross, estimate = .pred)
+rmse_bftune_out <- rmse(pred_class_bftune_out, truth = Gross, estimate = .pred)
 
 #############################
 #IMPLEMENTING REGULARIZATION#
