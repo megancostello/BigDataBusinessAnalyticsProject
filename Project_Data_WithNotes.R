@@ -435,7 +435,7 @@ RMSE_2_Validate
 #############################
 
 # ====== 5a linear model ================================
-MT0 <- lm(Gross~IMDB_Rating + budget + Action + Comedy + Drama + Horror,Training_Partition)
+MT0 <- lm(Gross~IMDB_Rating + budget + budget2 + Action + Comedy + Drama + Horror,Training_Partition)
 summary(MT0)
 #Multiple R-squared:  0.559
 
