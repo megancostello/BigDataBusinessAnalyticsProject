@@ -1,11 +1,14 @@
 
 # Load necessary libraries
+#install.packages("baguette")
+#install.packages("rpart.plot")
 #install.packages("glmnet") #THIS IS NEEDED TO RUN glmnet(), needed for regularization
 library(dplyr)   # For data manipulation
 library(ggplot2) # For plotting
 library(mgcv) #FOR gam()
 library(tidyverse)
-
+library(baguette)
+library(rpart.plot)
 
 # List all files in the directory (useful for troubleshooting)
 all_files <- list.files(recursive = TRUE, full.names = TRUE)
@@ -407,11 +410,7 @@ RMSE_6_Validate <- sqrt(mean((Validation_Partition$PRED_6_Out - Validation_Parti
 RMSE_6_Validate
 
 #############################
-<<<<<<< HEAD
-#MULTIVARIATE#
-=======
 #    5. MULTIVARIATE        #
->>>>>>> 047753b21fe797d90eb19e979c160f2f960a2ba9
 #############################
 
 # ====== 5a linear model ================================
@@ -430,25 +429,66 @@ Testing_Partition$PRED_0_OUT_Num <- unname(PRED_0_OUT)  #fix an issue where we h
 Testing_Partition$Gross_Num <- (Testing_Partition$Gross) #fix an issue where we had class = named numerics, causing NA for Pred_IN
 
 # calculate RMSE
-RMSE_0_In <- sqrt(mean((Training_Partition$PRED_0_IN_Num - Training_Partition$Gross_Num)^2))
-RMSE_0_In
-RMSE_0_Out <- sqrt(mean((Testing_Partition$PRED_0_OUT_Num - Testing_Partition$Gross_Num)^2))
-RMSE_0_Out
+RMSE_MT0_In <- sqrt(mean((Training_Partition$PRED_0_IN_Num - Training_Partition$Gross_Num)^2))
+RMSE_MT0_In
+RMSE_MT0_Out <- sqrt(mean((Testing_Partition$PRED_0_OUT_Num - Testing_Partition$Gross_Num)^2))
+RMSE_MT0_Out
 
-# ====== 5b linear model ================================
+# ====== 5b linear model apply regularization ================================
 
+#REGULARIZATION RIDGE
+
+training <- Training_Partition[, c("Gross", "Comedy", "Drama", "Action", "Horror", "budget", "IMDB_Rating")]
+holdout <- Testing_Partition[, c("Gross", "Comedy", "Drama", "Action", "Horror", "budget", "IMDB_Rating")]
+
+col_of_ones <- rep(1, dim(training)[1])
+
+X <- as.matrix(cbind(col_of_ones, training[-1]))
+
+y <- training[,1]
+
+library(glmnet)
+X_mat <- as.matrix(X)
+ridge_model <- glmnet(X_mat, y, alpha = 0)
+ridge_model
+
+# Assuming X_mat is your matrix of predictors and y is your response variable
+
+# Perform cross-validated ridge regression (alpha = 0 for ridge)
+cv_ridge <- cv.glmnet(X_mat, y, alpha = 0)
+
+# Plot the cross-validation curve
+plot(cv_ridge)
+
+# Get the lambda that gives minimum mean cross-validated error
+best_lambda <- cv_ridge$lambda.min
+cat("Best lambda:", best_lambda, "\n")
+
+# If you want a slightly more regularized model (1 SE rule)
+lambda_1se <- cv_ridge$lambda.1se
+cat("1-SE lambda:", lambda_1se, "\n")
+
+ridge_model <- glmnet(X_mat, y, alpha = 0, lambda = best_lambda)
+ridge_model
+
+# E_IN using training data
+pred_train <- predict(ridge_model, newx = X_mat)
+ridge_E_IN <- sqrt(mean((y - pred_train)^2))
+ridge_E_IN
+
+# Prepare the holdout (test) set for prediction
+X_test <- as.matrix(cbind(rep(1, nrow(holdout)), holdout[, -1]))  # Add intercept term for test set
+y_test <- holdout[, 1]  # True values for the test set
+
+# E_OUT using test data (out-of-sample error)
+pred_test <- predict(ridge_model, newx = X_test)
+ridge_E_OUT <- sqrt(mean((y_test - pred_test)^2))  # RMSE for test data
 
 # ====== 5c model includes transformations budget2 ================================
 #Creation of a simple Regression model, y = mx + b
-<<<<<<< HEAD
-M1 <- lm(Gross~IMDB_Rating + budget + budget2,Training_Partition)
-summary(M1)
-#Multiple R-squared:  0.5619
-=======
 MT1 <- lm(Gross~IMDB_Rating + budget + budget2 + budget3 + Action + Drama + Horror, Training_Partition)
 summary(MT1)
 #Multiple R-squared:  0.5693
->>>>>>> 047753b21fe797d90eb19e979c160f2f960a2ba9
 
 PRED_1_IN <- predict(MT1, Training_Partition) 
 PRED_1_OUT <- predict(MT1, Testing_Partition) 
@@ -461,16 +501,13 @@ Testing_Partition$PRED_1_OUT_Num <- unname(PRED_1_OUT)  #fix an issue where we h
 Testing_Partition$Gross_Num <- (Testing_Partition$Gross) #fix an issue where we had class = named numerics, causing NA for Pred_IN
 
 # calculate RMSE
-RMSE_1_In <- sqrt(mean((Training_Partition$PRED_1_IN_Num - Training_Partition$Gross_Num)^2))
-RMSE_1_In
-RMSE_1_Out <- sqrt(mean((Testing_Partition$PRED_1_OUT_Num - Testing_Partition$Gross_Num)^2))
-RMSE_1_Out
+RMSE_MT1_In <- sqrt(mean((Training_Partition$PRED_1_IN_Num - Training_Partition$Gross_Num)^2))
+RMSE_MT1_In
+RMSE_MT1_Out <- sqrt(mean((Testing_Partition$PRED_1_OUT_Num - Testing_Partition$Gross_Num)^2))
+RMSE_MT1_Out
 
-<<<<<<< HEAD
-#############################
-#IMPLEMENTING REGULARIZATION#
-#############################
-=======
+
+
 # ====== 5d SVM ==========================================================
 library(e1071) #SVM LIBRARY
 
@@ -533,36 +570,46 @@ print(SVM_Model_tuned) #DIAGNOSTIC SUMMARY
 (E_IN_TUNED<-1-mean(unname(predict(SVM_Model_tuned, svm_training))==Training_Partition$Gross))
 (E_OUT_TUNED<-1-mean(unname(predict(SVM_Model_tuned, svm_testing))==Testing_Partition$Gross))
 
+#GENERATE PREDICTIONS 
+preds_svm_in <- predict(SVM_Model_tuned, svm_training)%>%
+  bind_cols(svm_training)
+preds_svm_out <- predict(SVM_Model_tuned, svm_testing)%>%
+  bind_cols(svm_testing)
 
-#STEP 1: FORM THE INPUT MATRIX X:
+# Function to compute RMSE manually
+rmse_manual <- function(actual, predicted) {
+  sqrt(mean((actual - predicted)^2))
+}
 
-#STEP 1.1: MAKE A COLUMN OF ONES TO INCLUDE AS REGRESSORS FOR INTERCEPT
-col_of_ones <- rep(1, dim(Training_Partition)[1])
+rmse_svm_in <- rmse_manual(preds_svm_in$Gross, preds_svm_in$...1)
+rmse_svm_out <- rmse_manual(preds_svm_out$Gross, preds_svm_out$...1)
 
-#STEP 1.2: BIND COLUMN OF ONES WITH OTHER INPUT DATA COLUMNS
-#AND COERCE TO MATRIX OBJECT
-X <- as.matrix(cbind(col_of_ones, Training_Partition[,-1]))
+# ====== 5e regression tree ==========================================================
 
-#STEP 2: FORM THE OUTPUT VECTOR y
-y <- Training_Partition[,1]
+library(tidymodels) 
+library(rpart.plot)
+#SPECIFYING THE regression TREE MODEL
 
-# Convert to a numeric matrix
-X_numeric <- as.matrix(X)
-X_numeric <- apply(X_numeric, 2, as.numeric)  # Ensures each column is numeric
+reg_spec <- decision_tree(min_n = 20 , #minimum number of observations for split
+                            tree_depth = 30, #max tree depth
+                            cost_complexity = 0.01)  %>% #regularization parameter
+  set_engine("rpart") %>%
+  set_mode("regression")
+print(reg_spec)
 
-#STEP 3: COMPUTE THE PSEUDOINVERSE MATRIX
-# Now compute the pseudoinverse
-X_pseudo <- solve(t(X_numeric) %*% X_numeric) %*% t(X_numeric)
-# X_pseudo <- solve(t(X)%*%X)%*%t(X)
+#ESTIMATING THE MODEL 
+reg_fmla <- Gross ~ .
+reg_tree <- reg_spec %>%
+  fit(formula = reg_fmla, data = svm_training)
+print(reg_tree)
 
-#STEP 4: MULTIPLY THE PSEUDOINVERSE MATRIX BY THE OUTPUT VECTOR
-Betas <- X_pseudo%*%y
+#VISUALIZING THE TREE MODEL:
+reg_tree$fit %>%
+  rpart.plot(type = 2,roundint = FALSE)
 
-###############################
-# IMPLEMENTING REGULARIZATION #
-###############################
->>>>>>> 047753b21fe797d90eb19e979c160f2f960a2ba9
+plotcp(reg_tree$fit)
 
+<<<<<<< HEAD
 # ====== OLD MULTIVARIATE MOVED FROM ABOVE DOWN HERE ===================================
 #================================================================================
 
@@ -613,6 +660,165 @@ y_test <- holdout[, 1]  # True values for the test set
 pred_test <- predict(ridge_model, newx = X_test)
 E_OUT <- sqrt(mean((y_test - pred_test)^2))  # RMSE for test data
 cat("E_OUT (RMSE for test data):", E_OUT, "\n")
+=======
+#GENERATE PREDICTIONS AND COMBINE WITH TEST SET
+pred_reg <- predict(reg_tree, new_data = svm_testing) %>%
+  bind_cols(svm_testing)
+
+#OUT-OF-SAMPLE ERROR ESTIMATES FROM yardstick OR ModelMetrics PACKAGE
+rmse(pred_reg, estimate=.pred, truth=Gross)
+
+# TUNING TREE ------------------
+
+#BLANK TREE SPECIFICATION FOR TUNING
+tree_spec <- decision_tree(min_n = tune(),
+                           tree_depth = tune(),
+                           cost_complexity= tune()) %>%
+  set_engine("rpart") %>%
+  set_mode("regression")
+
+#CREATING A TUNING PARAMETER GRID
+tree_grid <- grid_regular(parameters(tree_spec), levels = 3)
+
+set.seed(123) #SET SEED FOR REPRODUCIBILITY WITH CROSS-VALIDATION
+tune_results <- tune_grid(tree_spec,
+                          reg_fmla, #MODEL FORMULA
+                          resamples = vfold_cv(svm_training, v=3), #RESAMPLES / FOLDS
+                          grid = tree_grid, #GRID
+                          metrics = metric_set(rmse, rsq)) #BENCHMARK METRIC
+
+#RETRIEVE OPTIMAL PARAMETERS FROM CROSS-VALIDATION
+best_params <- select_best(tune_results)
+best_params
+
+# NEW TUNED TREE ---------------------
+
+reg_spec_tune <- decision_tree(min_n = 40 , #minimum number of observations for split
+                          tree_depth = 8, #max tree depth
+                          cost_complexity = 0.0000000001)  %>% #regularization parameter
+  set_engine("rpart") %>%
+  set_mode("regression")
+print(reg_spec_tune)
+
+#ESTIMATING THE MODEL 
+reg_fmla_tune <- Gross ~ .
+reg_tree_tune <- reg_spec_tune %>%
+  fit(formula = reg_fmla_tune, data = svm_training)
+print(reg_tree_tune)
+
+#VISUALIZING THE TREE MODEL:
+reg_tree_tune$fit %>%
+  rpart.plot(type = 2,roundint = FALSE)
+
+plotcp(reg_tree_tune$fit)
+
+#GENERATE PREDICTIONS AND COMBINE WITH TEST SET
+pred_reg_in_tune <- predict(reg_tree_tune, new_data = svm_training) %>%
+  bind_cols(svm_training)
+
+#GENERATE PREDICTIONS AND COMBINE WITH TEST SET
+pred_reg_out_tune <- predict(reg_tree_tune, new_data = svm_testing) %>%
+  bind_cols(svm_testing)
+
+#OUT-OF-SAMPLE ERROR ESTIMATES FROM yardstick OR ModelMetrics PACKAGE
+rmse_tree_in <- rmse(pred_reg_in_tune, estimate=.pred, truth=Gross)
+rmse_tree_out <- rmse(pred_reg_out_tune, estimate=.pred, truth=Gross)
+
+# ====== 5f tree-based ensemble model ==========================================================
+library(baguette) #FOR BAGGED TREES
+library(caret)
+
+spec_bagged <- bag_tree(min_n = 20 , #minimum number of observations for split
+                        tree_depth = 30, #max tree depth
+                        cost_complexity = 0.01, #regularization parameter
+                        class_cost = NULL)  %>% #for output class imbalance adjustment (binary data only)
+  set_mode("regression") %>% #can set to regression for numeric prediction
+  set_engine("rpart", times=100) #times = # OF ENSEMBLE MEMBERS IN FOREST
+spec_bagged
+
+#FITTING THE MODEL
+set.seed(123)
+#MODEL DESCRIPTION:
+fmla <- Gross ~.
+
+bagged_forest <- spec_bagged %>%
+  fit(formula = fmla, data = svm_training)
+print(bagged_forest)
+
+#GENERATE IN-SAMPLE PREDICTIONS ON THE TRAIN SET AND COMBINE WITH TRAIN DATA
+pred_class_bf_in <- predict(bagged_forest, new_data = svm_training, type="numeric") %>%
+  bind_cols(svm_training) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+
+#GENERATE OUT-OF-SAMPLE PREDICTIONS ON THE TEST SET AND COMBINE WITH TEST DATA
+pred_class_bf_out <- predict(bagged_forest, new_data = svm_testing, type="numeric") %>%
+  bind_cols(svm_testing) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+
+# TUNING BAGGED TREE ------------------
+
+#BLANK TREE SPECIFICATION FOR TUNING
+
+bag_model <- bag_tree(min_n = tune() , #minimum number of observations for split
+                        tree_depth = tune(), #max tree depth
+                        cost_complexity = tune(), #regularization parameter
+                        class_cost = NULL)  %>% #for output class imbalance adjustment (binary data only)
+  set_mode("regression") %>% #can set to regression for numeric prediction
+  set_engine("rpart", times=100) #times = # OF ENSEMBLE MEMBERS IN FOREST
+bag_model
+
+workflow_spec <- workflow() %>%
+  add_model(bag_model) %>%
+  add_recipe(recipe(Gross ~ ., data = svm_training))
+
+folds <- vfold_cv(svm_training, v = 5)
+
+# Grid of hyperparameters
+grid_vals <- grid_regular(
+  min_n(range = c(2, 10)),
+  tree_depth(range = c(1, 10)),
+  cost_complexity(range = c(0, 1)),
+  levels = 4)
+
+tuned_results <- tune_grid(
+  workflow_spec,
+  resamples = folds,
+  grid = grid_vals,
+  metrics = metric_set(rmse)
+)
+
+best_params <- select_best(tuned_results)
+best_params
+
+spec_bagged_tune <- bag_tree(min_n = 7 , #minimum number of observations for split
+                        tree_depth = 4, #max tree depth
+                        cost_complexity = 4.64, #regularization parameter
+                        class_cost = NULL)  %>% #for output class imbalance adjustment (binary data only)
+  set_mode("regression") %>% #can set to regression for numeric prediction
+  set_engine("rpart", times=100) #times = # OF ENSEMBLE MEMBERS IN FOREST
+spec_bagged_tune
+
+bagged_forest_tune <- spec_bagged_tune %>%
+  fit(formula = fmla, data = svm_training)
+print(bagged_forest_tune)
+
+#GENERATE IN-SAMPLE PREDICTIONS ON THE TRAIN SET AND COMBINE WITH TRAIN DATA
+pred_class_bftune_in <- predict(bagged_forest_tune, new_data = svm_training, type="numeric") %>%
+  bind_cols(svm_training) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+
+#GENERATE OUT-OF-SAMPLE PREDICTIONS ON THE TEST SET AND COMBINE WITH TEST DATA
+pred_class_bftune_out <- predict(bagged_forest_tune, new_data = svm_testing, type="numeric") %>%
+  bind_cols(svm_testing) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+
+rmse_bftune_in <- rmse(pred_class_bftune_in, truth = Gross, estimate = .pred)
+rmse_bftune_out <- rmse(pred_class_bftune_out, truth = Gross, estimate = .pred)
+
+# ====== 5g RMSE table ==========================================================
+
+TABLE_MULTIVAR_RMSE <- as.table(matrix(c(RMSE_MT0_In, RMSE_MT1_In, ridge_E_IN, rmse_svm_in, rmse_tree_in$.estimate, rmse_bftune_in$.estimate, RMSE_MT0_Out, RMSE_MT1_Out, ridge_E_OUT, rmse_svm_out, rmse_tree_out$.estimate, rmse_bftune_out$.estimate), ncol=6, byrow=TRUE))
+colnames(TABLE_MULTIVAR_RMSE) <- c('LINEAR', 'RIDGE', 'NONLINEAR', 'SVM', 'TREE', 'BAGGED TREE')
+rownames(TABLE_MULTIVAR_RMSE) <- c('RMSE_IN', 'RMSE_OUT')
+TABLE_MULTIVAR_RMSE #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
+
+>>>>>>> 2e459e5423331715152fedebb876d14e9a57c508
 
 
 
