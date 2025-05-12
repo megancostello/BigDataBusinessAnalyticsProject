@@ -212,8 +212,6 @@ Main_df <- Main_df[, c("Gross", setdiff(names(Main_df), "Gross"))]
 
 # ====== DATA PARTITIONING ================================
 
-
-
 #FRACTION OF DATA TO BE USED AS IN-SAMPLE TRAINING DATA
 p1<-.7 #70% FOR TRAINING / Validation, planning for 40% to train, 30% to validate
 p2<- 30/70 #this is the 30% of the the total data
@@ -788,7 +786,280 @@ rownames(TABLE_MULTIVAR_RMSE) <- c('RMSE_IN', 'RMSE_OUT')
 TABLE_MULTIVAR_RMSE #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
 
 
+# ====== 8 binary classification ================================
 
+# ====== 9 multi class prediction tools ================================
+
+# ====== 9a SVM ==========================================================
+library(e1071) #SVM LIBRARY
+
+svm_training_class <- Training_Partition[, c("Genre", "Gross", "IMDB_Rating", "budget", "budget2")]
+svm_testing_class <- Testing_Partition[, c("Genre", "Gross", "IMDB_Rating", "budget", "budget2")]
+
+# Convert the genre variable to a factor
+svm_training_class$Genre <- as.factor(svm_training_class$Genre)
+svm_testing_class$Genre <- as.factor(svm_testing_class$Genre)
+
+# Check the factor levels
+levels(svm_training_class$Genre)
+levels(svm_testing_class$Genre)
+
+# Convert the factor genre into numeric
+# svm_training_class$Genre <- as.numeric(svm_training_class$Genre)
+# svm_testing_class$Genre <- as.numeric(svm_testing_class$Genre)
+
+# svm_training$Gross <- log(svm_training$Gross)
+# svm_training$budget <- log(svm_training$budget)
+# svm_training$budget2 <- log(svm_training$budget2)
+# 
+# svm_testing$Gross <- log(svm_testing$Gross)
+# svm_testing$budget <- log(svm_testing$budget)
+# svm_testing$budget2 <- log(svm_testing$budget2)
+
+#BUILD SVM CLASSIFIER
+# hard to get it to run without hitting max iterations, decreased cost and set SCALE to TRUE, kernel = linear
+SVM_Model_class <- svm(Genre~.,
+                data = svm_training_class, 
+                type = "C-classification", #set to "eps-regression" for numeric prediction
+                kernel = "radial",
+                cost=0.1,                   #REGULARIZATION PARAMETER
+                gamma = 1/(ncol(svm_training_class)-1), #DEFAULT KERNEL PARAMETER
+                coef0 = 0,                    #DEFAULT KERNEL PARAMETER
+                degree=2,                     #POLYNOMIAL KERNEL PARAMETER
+                scale = FALSE)                #RESCALE DATA? (SET TO TRUE TO NORMALIZE)
+
+print(SVM_Model_class) #DIAGNOSTIC SUMMARY
+
+#REPORT IN AND OUT-OF-SAMPLE ERRORS (1-ACCURACY)
+(E_IN_CLASS_PRETUNE<-1-mean(unname(predict(SVM_Model_class, svm_training_class))==svm_training_class$Genre))
+(E_OUT_CLASS_PRETUNE<-1-mean(unname(predict(SVM_Model_class, svm_testing_class))==svm_testing_class$Genre))
+
+#TUNING THE SVM BY CROSS-VALIDATION
+tune_control<-tune.control(cross=10) #SET K-FOLD CV PARAMETERS
+set.seed(123)
+TUNE <- tune.svm(x = svm_training_class[,-1],
+                 y = svm_training_class[,1],
+                 type = "C-classification",
+                 kernel = "radial",
+                 tunecontrol=tune_control,
+                 cost=c(.01, .1, 1, 10, 100, 1000), #REGULARIZATION PARAMETER
+                 gamma = 1/(ncol(svm_training_class)-1), #KERNEL PARAMETER
+                 coef0 = 0,           #KERNEL PARAMETER
+                 degree = 2)          #POLYNOMIAL KERNEL PARAMETER
+
+print(TUNE) #OPTIMAL TUNING PARAMETERS FROM VALIDATION PROCEDURE
+
+SVM_Model_class_tuned<- svm(Genre~., 
+                      data = svm_training_class, 
+                      type = "C-classification", #set to "eps-regression" for numeric prediction
+                      kernel = "radial",
+                      cost=1,                   #REGULARIZATION PARAMETER
+                      gamma = 0.25, #DEFAULT KERNEL PARAMETER
+                      coef0 = 0,                    #DEFAULT KERNEL PARAMETER
+                      degree=2,                     #POLYNOMIAL KERNEL PARAMETER
+                      scale = FALSE)                #RESCALE DATA? (SET TO TRUE TO NORMALIZE)
+
+print(SVM_Model_class_tuned) #DIAGNOSTIC SUMMARY
+
+#REPORT IN AND OUT-OF-SAMPLE ERRORS (1-ACCURACY)
+(E_IN_CLASS_TUNED<-1-mean(unname(predict(SVM_Model_class_tuned, svm_training_class))==svm_training_class$Genre))
+(E_OUT_CLASS_TUNED<-1-mean(unname(predict(SVM_Model_class_tuned, svm_testing_class))==svm_testing_class$Genre))
+
+#GENERATE PREDICTIONS 
+preds_svm_class_in <- predict(SVM_Model_class_tuned, svm_training_class)%>%
+  bind_cols(svm_training_class)
+preds_svm_class_out <- predict(SVM_Model_class_tuned, svm_testing_class)%>%
+  bind_cols(svm_testing_class)
+
+# Function to compute RMSE manually
+rmse_manual <- function(actual, predicted) {
+  sqrt(mean((actual - predicted)^2))
+}
+
+rmse_svm_class_in <- rmse_manual(preds_svm_class_in$Genre, preds_svm_class_in$...1)
+rmse_svm_class_out <- rmse_manual(preds_svm_class_out$Genre, preds_svm_class_out$...1)
+
+# ====== 9b regression tree ==========================================================
+
+library(tidymodels) 
+library(rpart.plot)
+#SPECIFYING THE regression TREE MODEL
+
+reg_spec <- decision_tree(min_n = 20 , #minimum number of observations for split
+                          tree_depth = 30, #max tree depth
+                          cost_complexity = 0.01)  %>% #regularization parameter
+  set_engine("rpart") %>%
+  set_mode("classification")
+print(reg_spec)
+
+#ESTIMATING THE MODEL 
+class_fmla <- Genre ~ .
+class_tree <- reg_spec %>%
+  fit(formula = class_fmla, data = svm_training_class)
+print(class_tree)
+
+#VISUALIZING THE TREE MODEL:
+class_tree$fit %>%
+  rpart.plot(type = 2,roundint = FALSE)
+
+plotcp(class_tree$fit)
+
+#GENERATE PREDICTIONS AND COMBINE WITH TEST SET
+pred_class_reg <- predict(class_tree, new_data = svm_testing_class) %>%
+  bind_cols(svm_testing_class)
+
+#OUT-OF-SAMPLE ERROR ESTIMATES FROM yardstick OR ModelMetrics PACKAGE
+rmse(pred_class_reg, estimate=.pred, truth=Genre)
+
+# TUNING TREE ------------------
+
+#BLANK TREE SPECIFICATION FOR TUNING
+tree_spec_class <- decision_tree(min_n = tune(),
+                           tree_depth = tune(),
+                           cost_complexity= tune()) %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+#CREATING A TUNING PARAMETER GRID
+tree_grid_class <- grid_regular(parameters(tree_spec_class), levels = 3)
+
+set.seed(123) #SET SEED FOR REPRODUCIBILITY WITH CROSS-VALIDATION
+tune_class_results <- tune_grid(tree_spec_class,
+                          class_fmla, #MODEL FORMULA
+                          resamples = vfold_cv(svm_training_class, v=3), #RESAMPLES / FOLDS
+                          grid = tree_grid_class, #GRID
+                          metrics = metric_set(rmse)) #BENCHMARK METRIC
+
+#RETRIEVE OPTIMAL PARAMETERS FROM CROSS-VALIDATION
+best_params <- select_best(tune_class_results)
+best_params
+
+# NEW TUNED TREE ---------------------
+
+class_spec_tune <- decision_tree(min_n = 40 , #minimum number of observations for split
+                               tree_depth = 8, #max tree depth
+                               cost_complexity = 0.0000000001)  %>% #regularization parameter
+  set_engine("rpart") %>%
+  set_mode("classification")
+print(class_spec_tune)
+
+#ESTIMATING THE MODEL 
+class_fmla_tune <- Genre ~ .
+class_tree_tune <- class_spec_tune %>%
+  fit(formula = class_fmla_tune, data = svm_training_class)
+print(class_tree_tune)
+
+#VISUALIZING THE TREE MODEL:
+class_tree_tune$fit %>%
+  rpart.plot(type = 2,roundint = FALSE)
+
+plotcp(class_tree_tune$fit)
+
+#GENERATE PREDICTIONS AND COMBINE WITH TEST SET
+pred_class_in_tune <- predict(class_tree_tune, new_data = svm_training_class) %>%
+  bind_cols(svm_training_class)
+
+#GENERATE PREDICTIONS AND COMBINE WITH TEST SET
+pred_class_out_tune <- predict(class_tree_tune, new_data = svm_testing_class) %>%
+  bind_cols(svm_testing_class)
+
+#OUT-OF-SAMPLE ERROR ESTIMATES FROM yardstick OR ModelMetrics PACKAGE
+rmse_tree_in <- rmse(pred_class_in_tune, estimate=.pred, truth=Genre)
+rmse_tree_out <- rmse(pred_class_out_tune, estimate=.pred, truth=Genre)
+
+# ====== 5f tree-based ensemble model ==========================================================
+library(baguette) #FOR BAGGED TREES
+library(caret)
+
+spec_bagged <- bag_tree(min_n = 20 , #minimum number of observations for split
+                        tree_depth = 30, #max tree depth
+                        cost_complexity = 0.01, #regularization parameter
+                        class_cost = NULL)  %>% #for output class imbalance adjustment (binary data only)
+  set_mode("classification") %>% #can set to regression for numeric prediction
+  set_engine("rpart", times=100) #times = # OF ENSEMBLE MEMBERS IN FOREST
+spec_bagged
+
+#FITTING THE MODEL
+set.seed(123)
+#MODEL DESCRIPTION:
+fmla <- Genre ~.
+
+bagged_forest <- spec_bagged %>%
+  fit(formula = fmla, data = svm_training)
+print(bagged_forest)
+
+#GENERATE IN-SAMPLE PREDICTIONS ON THE TRAIN SET AND COMBINE WITH TRAIN DATA
+pred_class_bf_in <- predict(bagged_forest, new_data = svm_training_class, type="factor") %>%
+  bind_cols(svm_training_class) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+
+#GENERATE OUT-OF-SAMPLE PREDICTIONS ON THE TEST SET AND COMBINE WITH TEST DATA
+pred_class_bf_out <- predict(bagged_forest, new_data = svm_testing_class, type="factor") %>%
+  bind_cols(svm_testing_class) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+
+# TUNING BAGGED TREE ------------------
+
+#BLANK TREE SPECIFICATION FOR TUNING
+
+bag_model <- bag_tree(min_n = tune() , #minimum number of observations for split
+                      tree_depth = tune(), #max tree depth
+                      cost_complexity = tune(), #regularization parameter
+                      class_cost = NULL)  %>% #for output class imbalance adjustment (binary data only)
+  set_mode("classification") %>% #can set to regression for numeric prediction
+  set_engine("rpart", times=100) #times = # OF ENSEMBLE MEMBERS IN FOREST
+bag_model
+
+workflow_spec <- workflow() %>%
+  add_model(bag_model) %>%
+  add_recipe(recipe(Gross ~ ., data = svm_training_class))
+
+folds <- vfold_cv(svm_training_class, v = 5)
+
+# Grid of hyperparameters
+grid_vals <- grid_regular(
+  min_n(range = c(2, 10)),
+  tree_depth(range = c(1, 10)),
+  cost_complexity(range = c(0, 1)),
+  levels = 4)
+
+tuned_results <- tune_grid(
+  workflow_spec,
+  resamples = folds,
+  grid = grid_vals,
+  metrics = metric_set(rmse)
+)
+
+best_params <- select_best(tuned_results)
+best_params
+
+spec_bagged_tune <- bag_tree(min_n = 7 , #minimum number of observations for split
+                             tree_depth = 4, #max tree depth
+                             cost_complexity = 4.64, #regularization parameter
+                             class_cost = NULL)  %>% #for output class imbalance adjustment (binary data only)
+  set_mode("regression") %>% #can set to regression for numeric prediction
+  set_engine("rpart", times=100) #times = # OF ENSEMBLE MEMBERS IN FOREST
+spec_bagged_tune
+
+bagged_forest_tune <- spec_bagged_tune %>%
+  fit(formula = fmla, data = svm_training)
+print(bagged_forest_tune)
+
+#GENERATE IN-SAMPLE PREDICTIONS ON THE TRAIN SET AND COMBINE WITH TRAIN DATA
+pred_class_bftune_in <- predict(bagged_forest_tune, new_data = svm_training, type="numeric") %>%
+  bind_cols(svm_training) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+
+#GENERATE OUT-OF-SAMPLE PREDICTIONS ON THE TEST SET AND COMBINE WITH TEST DATA
+pred_class_bftune_out <- predict(bagged_forest_tune, new_data = svm_testing, type="numeric") %>%
+  bind_cols(svm_testing) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+
+rmse_bftune_in <- rmse(pred_class_bftune_in, truth = Gross, estimate = .pred)
+rmse_bftune_out <- rmse(pred_class_bftune_out, truth = Gross, estimate = .pred)
+
+# ====== 9d RMSE table ==========================================================
+
+TABLE_MULTIVAR_RMSE <- as.table(matrix(c(RMSE_MT0_In, RMSE_MT1_In, ridge_E_IN, rmse_svm_in, rmse_tree_in$.estimate, rmse_bftune_in$.estimate, RMSE_MT0_Out, RMSE_MT1_Out, ridge_E_OUT, rmse_svm_out, rmse_tree_out$.estimate, rmse_bftune_out$.estimate), ncol=6, byrow=TRUE))
+colnames(TABLE_MULTIVAR_RMSE) <- c('LINEAR', 'RIDGE', 'NONLINEAR', 'SVM', 'TREE', 'BAGGED TREE')
+rownames(TABLE_MULTIVAR_RMSE) <- c('RMSE_IN', 'RMSE_OUT')
+TABLE_MULTIVAR_RMSE #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
 
 
 
