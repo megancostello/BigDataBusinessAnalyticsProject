@@ -831,6 +831,7 @@ TABLE_MULTIVAR_RMSE #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
 #Stars and Directors have too many unique IDs which hurt interpretation of the model
 #Genre Simplifies the model to Action and Not Action, which is unhelpful
 
+# ====== 8a - Logit Regression Model ===================================
 #Cleaning Data
 Validation_Partition_Bivariate <- Validation_Partition %>% select(-Series_Title,-Genre, -Star1, -Director, -Star2, -Star3, -Star4)
 Training_Partition_Bivariate <- Training_Partition_Bivariate %>% select(-Series_Title,-Genre, -Star1, -Director, -Star2, -Star3, -Star4)
@@ -865,6 +866,7 @@ plotcp(class_tree$fit)
 class_tree$fit %>%
   rpart.plot(type = 5, extra = 2, roundint = FALSE, main = "Is it an Action Movie?")
 
+# ====== 8c - Roc / AUC Models ===================================
 #ROC CURVE and AUC
 library(yardstick)
 # Predictions and probabilities
@@ -905,6 +907,7 @@ roc_auc(roc_data, truth = Action, .pred_1)
 roc_curve(roc_data, truth = Action, .pred_1) %>%
   autoplot()
 
+# ====== Classification Trees CART MODELS ===================================
 #Comedy
 class_fmla <- Comedy ~ .
 class_tree <- class_spec %>%
