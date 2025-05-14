@@ -10,6 +10,8 @@ library(tidyverse)
 library(baguette)
 library(rpart.plot)
 
+
+
 # List all files in the directory (useful for troubleshooting)
 all_files <- list.files(recursive = TRUE, full.names = TRUE)
 
@@ -208,7 +210,10 @@ Main_df$Horror[Main_df$Genre!='Horror']<-0 #if it's not Horror, code the Horror 
 #Update Runtime to make it an integer
 Main_df$Runtime <- as.numeric(gsub(" min", "", Main_df$Runtime))
 Main_df <- Main_df[, c("Gross", setdiff(names(Main_df), "Gross"))]
-
+Main_df$Comedy <- as.factor(Main_df$Comedy)
+Main_df$Horror <- as.factor(Main_df$Horror)
+Main_df$Drama <- as.factor(Main_df$Drama)
+Main_df$Action <- as.factor(Main_df$Action)
 # ====== DATAFRAME Creation END ================================
   
 #THE ABOVE IS THE DATASET.
@@ -822,6 +827,17 @@ TABLE_MULTIVAR_RMSE #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
 
 # ====== 8 binary classification ================================
 # Specify the model for classification
+
+
+#Removing Stars, Directors, and Genre for Model creation
+#Stars and Directors have too many unique IDs which hurt interpretation of the model
+#Genre Simplifies the model to Action and Not Action, which is unhelpful
+
+Training_Partition_Bivariate <- Training_Partition %>% select(-Genre, -Star1, -Director, -Star2, -Star3, -Star4)
+
+Testing_Partition_Bivariate <- Testing_Partition %>% select(-Genre, -Star1, -Director, -Star2, -Star3, -Star4)
+Validation_Partition_Bivariate <- Validation_Partition %>% select(-Genre, -Star1, -Director, -Star2, -Star3, -Star4)
+
 class_spec <- decision_tree(min_n = 200,  # Minimum number of observations for split
                             tree_depth = 30,  # Maximum tree depth
                             cost_complexity = 0.01) %>%  # Regularization parameter
@@ -838,19 +854,37 @@ class_fmla <- Action ~ .  # Formula to predict 'Action' based on all other varia
 
 class_fmla <- Action ~ . - Series_Title
 class_tree <- class_spec %>%
-  fit(formula = class_fmla, data = Training_Partition)
+  fit(formula = class_fmla, data = Training_Partition_Bivariate)
 
 # Check the model results
 print(class_tree)
 
 # Plot the complexity parameter (cp) to analyze the model's complexity
 plotcp(class_tree$fit)
-
-
 class_tree$fit %>%
-  rpart.plot(type = 4, extra = 2, roundint = FALSE)
-
+  rpart.plot(type = 5, extra = 2, roundint = FALSE, main = "Is it an Action Movie?")
 plotcp(class_tree$fit)
+
+#Comedy
+class_fmla <- Comedy ~ . - Series_Title
+class_tree <- class_spec %>%
+  fit(formula = class_fmla, data = Training_Partition_Bivariate)
+class_tree$fit %>%
+  rpart.plot(type = 5, extra = 2, roundint = FALSE, main = "Is it an Comedy Movie?")
+
+#Drama
+class_fmla <- Drama ~ . - Series_Title
+class_tree <- class_spec %>%
+  fit(formula = class_fmla, data = Training_Partition_Bivariate)
+class_tree$fit %>%
+  rpart.plot(type = 5, extra = 2, roundint = FALSE, main = "Is it an Drama Movie?")
+
+#Horror
+class_fmla <- Horror ~ . - Series_Title
+class_tree <- class_spec %>%
+  fit(formula = class_fmla, data = Training_Partition_Bivariate)
+class_tree$fit %>%
+  rpart.plot(type = 5, extra = 2, roundint = FALSE, main = "Is it an Horror Movie?")
 
 # ====== 9 multi class prediction tools ================================
 
