@@ -237,7 +237,7 @@ set.seed(12345)
 train_ind <- sample(obs_count, size = training_size)
 Training <- Main_df[train_ind, ] #PULLS RANDOM ROWS FOR TRAINING 70% which we need to break again
 Testing_Partition <- Main_df[-train_ind, ] #This is our Testing Partition
-
+Testing_Partition_Bivariate <- Testing_Partition
 
 #We will break the other into validation from the "Training"
 obs_count2<-dim(Training)[1] 
@@ -246,7 +246,7 @@ set.seed(12345) #set seed
 validation_ind <- sample(obs_count2, size = validation_size) #Same as above for creating the index
 Validation_Partition <- Training[validation_ind,] #PULLS RANDOM ROWS FOR Validation 70% which we need to break again
 Training_Partition <- Training[-validation_ind,] #Remainder go to Training
-
+Training_Partition_Bivariate <- Training_Partition
 #Check to see if it adds up, should return TRUE
 obs_count == nrow(Validation_Partition) + nrow(Training_Partition) + nrow(Testing_Partition)
 #We now have: Training Partition 40%, Validation Partition 30%, and a Testing Partion 30%
@@ -823,20 +823,21 @@ TABLE_MULTIVAR_RMSE #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
 
 <<<<<<< HEAD
 >>>>>>> 2e459e5423331715152fedebb876d14e9a57c508
-=======
+#=======
 
 # ====== 8 binary classification ================================
 # Specify the model for classification
-
-
 #Removing Stars, Directors, and Genre for Model creation
 #Stars and Directors have too many unique IDs which hurt interpretation of the model
 #Genre Simplifies the model to Action and Not Action, which is unhelpful
 
-Training_Partition_Bivariate <- Training_Partition %>% select(-Genre, -Star1, -Director, -Star2, -Star3, -Star4)
-
-Testing_Partition_Bivariate <- Testing_Partition %>% select(-Genre, -Star1, -Director, -Star2, -Star3, -Star4)
-Validation_Partition_Bivariate <- Validation_Partition %>% select(-Genre, -Star1, -Director, -Star2, -Star3, -Star4)
+#Cleaning Data
+Validation_Partition_Bivariate <- Validation_Partition %>% select(-Series_Title,-Genre, -Star1, -Director, -Star2, -Star3, -Star4)
+Training_Partition_Bivariate <- Training_Partition_Bivariate %>% select(-Series_Title,-Genre, -Star1, -Director, -Star2, -Star3, -Star4)
+Testing_Partition_Bivariate <- Testing_Partition_Bivariate %>% select(-Series_Title,-Genre, -Star1, -Director, -Star2, -Star3, -Star4)
+#LOGIT MODEL
+logit_model <- glm(Action ~ ., data = Training_Partition_Bivariate, family = "binomial")
+summary(logit_model)
 
 class_spec <- decision_tree(min_n = 200,  # Minimum number of observations for split
                             tree_depth = 30,  # Maximum tree depth
@@ -848,11 +849,11 @@ class_spec <- decision_tree(min_n = 200,  # Minimum number of observations for s
 print(class_spec)
 
 # Specify the formula for predicting Action (you can replace Action with another target variable if needed)
-class_fmla <- Action ~ .  # Formula to predict 'Action' based on all other variables
+#class_fmla <- Action ~ .  # Formula to predict 'Action' based on all other variables
 
 # Fit the model to the training data
 
-class_fmla <- Action ~ . - Series_Title
+class_fmla <- Action ~ .
 class_tree <- class_spec %>%
   fit(formula = class_fmla, data = Training_Partition_Bivariate)
 
@@ -863,24 +864,63 @@ print(class_tree)
 plotcp(class_tree$fit)
 class_tree$fit %>%
   rpart.plot(type = 5, extra = 2, roundint = FALSE, main = "Is it an Action Movie?")
-plotcp(class_tree$fit)
+
+#ROC CURVE and AUC
+library(yardstick)
+# Predictions and probabilities
+#CLEAN slate of data was seeing issues noting Series Title not found when it was removed previously.
+Training_Partition_Bivariate <- Training_Partition %>%
+  select(-Series_Title, -Genre, -Star1, -Director, -Star2, -Star3, -Star4)
+
+class_fmla <- Action ~ .  # Reconfirm the formula is correct
+class_tree <- class_spec %>%
+  fit(formula = class_fmla, data = Training_Partition_Bivariate)
+pred_prob <- predict(class_tree, new_data = Testing_Partition_Bivariate, type = "prob")
+
+pred_class <- predict(class_tree, new_data = Testing_Partition_Bivariate, type="class") %>%
+  bind_cols(Testing_Partition_Bivariate) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+pred_class
+
+# Example of changing the threshold to 0.3
+#pred_class <- ifelse(pred_prob$.pred_1 > 0.3, 1, 0)
+#pred_class
+
+pred_prob <- predict(class_tree, new_data = Testing_Partition_Bivariate, type="prob") %>%
+  bind_cols(Testing_Partition_Bivariate) #ADD PROBABILITY PREDICTIONS DIRECTLY TO TEST DATA
+
+# Evaluate performance
+confusion <- table(pred_class$.pred_class, pred_class$Action)
+confusionMatrix(confusion, positive='1') #FROM CARET PACKAGE
+
+pred_prob <- predict(class_tree, new_data = Testing_Partition_Bivariate, type = "prob")
+print(pred_prob)
+
+# Combine predictions and actual labels
+roc_data <- bind_cols(Testing_Partition_Bivariate %>% select(Action), pred_prob)
+
+# Calculate AUC — `truth` must be **unquoted**
+roc_auc(roc_data, truth = Action, .pred_1)
+
+# Plot ROC curve
+roc_curve(roc_data, truth = Action, .pred_1) %>%
+  autoplot()
 
 #Comedy
-class_fmla <- Comedy ~ . - Series_Title
+class_fmla <- Comedy ~ .
 class_tree <- class_spec %>%
   fit(formula = class_fmla, data = Training_Partition_Bivariate)
 class_tree$fit %>%
   rpart.plot(type = 5, extra = 2, roundint = FALSE, main = "Is it an Comedy Movie?")
 
 #Drama
-class_fmla <- Drama ~ . - Series_Title
+class_fmla <- Drama ~ .
 class_tree <- class_spec %>%
   fit(formula = class_fmla, data = Training_Partition_Bivariate)
 class_tree$fit %>%
   rpart.plot(type = 5, extra = 2, roundint = FALSE, main = "Is it an Drama Movie?")
 
 #Horror
-class_fmla <- Horror ~ . - Series_Title
+class_fmla <- Horror ~ .
 class_tree <- class_spec %>%
   fit(formula = class_fmla, data = Training_Partition_Bivariate)
 class_tree$fit %>%
