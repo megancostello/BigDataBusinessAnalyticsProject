@@ -1099,29 +1099,29 @@ spec_bagged_tune <- bag_tree(min_n = 7 , #minimum number of observations for spl
                              tree_depth = 4, #max tree depth
                              cost_complexity = 4.64, #regularization parameter
                              class_cost = NULL)  %>% #for output class imbalance adjustment (binary data only)
-  set_mode("regression") %>% #can set to regression for numeric prediction
+  set_mode("classification") %>% #can set to regression for numeric prediction
   set_engine("rpart", times=100) #times = # OF ENSEMBLE MEMBERS IN FOREST
 spec_bagged_tune
 
 bagged_forest_tune <- spec_bagged_tune %>%
-  fit(formula = fmla, data = svm_training)
+  fit(formula = fmla, data = svm_training_class)
 print(bagged_forest_tune)
 
 #GENERATE IN-SAMPLE PREDICTIONS ON THE TRAIN SET AND COMBINE WITH TRAIN DATA
-pred_class_bftune_in <- predict(bagged_forest_tune, new_data = svm_training, type="numeric") %>%
-  bind_cols(svm_training) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+pred_class_bftune_in <- predict(bagged_forest_tune, new_data = svm_training_class, type="factor") %>%
+  bind_cols(svm_training_class) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
 
 #GENERATE OUT-OF-SAMPLE PREDICTIONS ON THE TEST SET AND COMBINE WITH TEST DATA
-pred_class_bftune_out <- predict(bagged_forest_tune, new_data = svm_testing, type="numeric") %>%
-  bind_cols(svm_testing) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+pred_class_bftune_out <- predict(bagged_forest_tune, new_data = svm_testing_class, type="factor") %>%
+  bind_cols(svm_testing_class) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
 
-rmse_bftune_in <- rmse(pred_class_bftune_in, truth = Gross, estimate = .pred)
-rmse_bftune_out <- rmse(pred_class_bftune_out, truth = Gross, estimate = .pred)
+rmse_bftune_in <- rmse(pred_class_bftune_in, truth = Genre, estimate = .pred)
+rmse_bftune_out <- rmse(pred_class_bftune_out, truth = Genre, estimate = .pred)
 
 # ====== 9d RMSE table ==========================================================
 
 TABLE_MULTIVAR_RMSE <- as.table(matrix(c(RMSE_MT0_In, RMSE_MT1_In, ridge_E_IN, rmse_svm_in, rmse_tree_in$.estimate, rmse_bftune_in$.estimate, RMSE_MT0_Out, RMSE_MT1_Out, ridge_E_OUT, rmse_svm_out, rmse_tree_out$.estimate, rmse_bftune_out$.estimate), ncol=6, byrow=TRUE))
-colnames(TABLE_MULTIVAR_RMSE) <- c('LINEAR', 'RIDGE', 'NONLINEAR', 'SVM', 'TREE', 'BAGGED TREE')
+colnames(TABLE_MULTIVAR_RMSE) <- c('SVM', 'TREE', 'BAGGED TREE')
 rownames(TABLE_MULTIVAR_RMSE) <- c('RMSE_IN', 'RMSE_OUT')
 TABLE_MULTIVAR_RMSE #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
 
