@@ -1006,6 +1006,10 @@ print(SVM_Model_class_tuned) #DIAGNOSTIC SUMMARY
 (E_IN_CLASS_TUNED<-1-mean(unname(predict(SVM_Model_class_tuned, svm_training_class))==svm_training_class$Genre))
 (E_OUT_CLASS_TUNED<-1-mean(unname(predict(SVM_Model_class_tuned, svm_testing_class))==svm_testing_class$Genre))
 
+in_class_svm_tuned_accuracy <- mean(unname(predict(SVM_Model_class_tuned, svm_training_class))==svm_training_class$Genre)
+out_class_svm_tuned_accuracy <- mean(unname(predict(SVM_Model_class_tuned, svm_testing_class))==svm_testing_class$Genre)
+
+
 #GENERATE PREDICTIONS 
 preds_svm_class_in <- predict(SVM_Model_class_tuned, svm_training_class)%>%
   bind_cols(svm_training_class)
@@ -1026,12 +1030,12 @@ library(tidymodels)
 library(rpart.plot)
 #SPECIFYING THE regression TREE MODEL
 
-reg_spec <- decision_tree(min_n = 20 , #minimum number of observations for split
+reg_spec_class <- decision_tree(min_n = 20 , #minimum number of observations for split
                           tree_depth = 30, #max tree depth
                           cost_complexity = 0.01)  %>% #regularization parameter
   set_engine("rpart") %>%
   set_mode("classification")
-print(reg_spec)
+print(reg_spec_class)
 
 #ESTIMATING THE MODEL 
 class_fmla <- Genre ~ .
@@ -1041,7 +1045,7 @@ print(class_tree)
 
 #VISUALIZING THE TREE MODEL:
 class_tree$fit %>%
-  rpart.plot(type = 2,roundint = FALSE)
+  rpart.plot(type = 3,roundint = FALSE)
 
 plotcp(class_tree$fit)
 
@@ -1049,8 +1053,17 @@ plotcp(class_tree$fit)
 pred_class_reg <- predict(class_tree, new_data = svm_testing_class) %>%
   bind_cols(svm_testing_class)
 
+pred_class_reg_numeric <- pred_class_reg
+pred_class_reg_numeric$Genre <- as.numeric(pred_class_reg_numeric$Genre)
+pred_class_reg_numeric$.pred_class <- as.numeric(pred_class_reg_numeric$.pred_class)
+
+
 #OUT-OF-SAMPLE ERROR ESTIMATES FROM yardstick OR ModelMetrics PACKAGE
-rmse(pred_class_reg, estimate=.pred, truth=Genre)
+tree_class_rmse_out <- rmse(pred_class_reg_numeric, estimate=.pred_class, truth=Genre)
+
+#GENERATE OUT-OF-SAMPLE CONFUSION MATRIX AND DIAGNOSTICS
+confusion <- table(pred_class_reg$.pred_class, pred_class_reg$Genre)
+confusionMatrix(confusion) #FROM CARET PACKAGE
 
 # TUNING TREE ------------------
 
@@ -1069,7 +1082,7 @@ tune_class_results <- tune_grid(tree_spec_class,
                           class_fmla, #MODEL FORMULA
                           resamples = vfold_cv(svm_training_class, v=3), #RESAMPLES / FOLDS
                           grid = tree_grid_class, #GRID
-                          metrics = metric_set(rmse)) #BENCHMARK METRIC
+                          metrics = metric_set(accuracy)) #BENCHMARK METRIC
 
 #RETRIEVE OPTIMAL PARAMETERS FROM CROSS-VALIDATION
 best_params <- select_best(tune_class_results)
@@ -1077,8 +1090,8 @@ best_params
 
 # NEW TUNED TREE ---------------------
 
-class_spec_tune <- decision_tree(min_n = 40 , #minimum number of observations for split
-                               tree_depth = 8, #max tree depth
+class_spec_tune <- decision_tree(min_n = 1 , #minimum number of observations for split
+                               tree_depth = 2, #max tree depth
                                cost_complexity = 0.0000000001)  %>% #regularization parameter
   set_engine("rpart") %>%
   set_mode("classification")
@@ -1105,102 +1118,239 @@ pred_class_out_tune <- predict(class_tree_tune, new_data = svm_testing_class) %>
   bind_cols(svm_testing_class)
 
 #OUT-OF-SAMPLE ERROR ESTIMATES FROM yardstick OR ModelMetrics PACKAGE
-rmse_tree_in <- rmse(pred_class_in_tune, estimate=.pred, truth=Genre)
-rmse_tree_out <- rmse(pred_class_out_tune, estimate=.pred, truth=Genre)
+rmse_tree_in <- rmse(pred_class_in_tune, estimate=.pred_class, truth=Genre)
+rmse_tree_out <- rmse(pred_class_out_tune, estimate=.pred_class, truth=Genre)
 
-# ====== 5f tree-based ensemble model ==========================================================
-library(baguette) #FOR BAGGED TREES
+#GENERATE OUT-OF-SAMPLE CONFUSION MATRIX AND DIAGNOSTICS
+confusion_class_tuned <- table(pred_class_out_tune$.pred_class, pred_class_out_tune$Genre)
+confusionMatrix(confusion_class_tuned) #FROM CARET PACKAGE
+
+# # ====== 9c tree-based ensemble model ==========================================================
+
+# library(baguette) #FOR BAGGED TREES
+# library(caret)
+# 
+# spec_bagged_class <- bag_tree(min_n = 20 , #minimum number of observations for split
+#                         tree_depth = 30, #max tree depth
+#                         cost_complexity = 0.01, #regularization parameter
+#                         class_cost = NULL)  %>% #for output class imbalance adjustment (binary data only)
+#   set_mode("classification") %>% #can set to regression for numeric prediction
+#   set_engine("rpart", times=100) #times = # OF ENSEMBLE MEMBERS IN FOREST
+# spec_bagged_class
+# 
+# #FITTING THE MODEL
+# set.seed(123)
+# #MODEL DESCRIPTION:
+# fmla_class <- Genre ~.
+# 
+# bagged_forest_class <- spec_bagged_class %>%
+#   fit(formula = fmla_class, data = svm_training_class)
+# print(bagged_forest_class)
+# 
+# # svm_training_class_numeric <- svm_training_class
+# # svm_testing_class_numeric <- svm_testing_class
+# # 
+# # svm_training_class_numeric$Genre <- as.numeric(svm_training_class_numeric$Genre)
+# # svm_testing_class_numeric$Genre <- as.numeric(svm_testing_class_numeric$Genre)
+# 
+# 
+# #GENERATE IN-SAMPLE PREDICTIONS ON THE TRAIN SET AND COMBINE WITH TRAIN DATA
+# pred_class_bf_in_class <- predict(bagged_forest_class, new_data = svm_training_class, type="class") %>%
+#   bind_cols(svm_training_class) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+# 
+# #GENERATE OUT-OF-SAMPLE PREDICTIONS ON THE TEST SET AND COMBINE WITH TEST DATA
+# pred_class_bf_out_class <- predict(bagged_forest_class, new_data = svm_testing_class, type="class") %>%
+#   bind_cols(svm_testing_class) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+# 
+# #GENERATE IN-SAMPLE CONFUSION MATRIX AND DIAGNOSTICS
+# confusion_bag_out <- table(pred_class_bf_out_class$.pred_class, pred_class_bf_out_class$Genre)
+# confusionMatrix(confusion) #FROM CARET PACKAGE
+# 
+# #GENERATE IN-SAMPLE CONFUSION MATRIX AND DIAGNOSTICS
+# confusion_bag_in <- table(pred_class_bf_in_class$.pred_class, pred_class_bf_in_class$Genre)
+# confusionMatrix(confusion) #FROM CARET PACKAGE
+# 
+# # TUNING BAGGED TREE ------------------
+# 
+# #BLANK TREE SPECIFICATION FOR TUNING
+# 
+# bag_model_class <- bag_tree(min_n = tune() , #minimum number of observations for split
+#                       tree_depth = tune(), #max tree depth
+#                       cost_complexity = tune(), #regularization parameter
+#                       class_cost = NULL)  %>% #for output class imbalance adjustment (binary data only)
+#   set_mode("classification") %>% #can set to regression for numeric prediction
+#   set_engine("rpart", times = 50)  # Number of bagged trees
+# bag_model_class
+# 
+# workflow_spec <- workflow() %>%
+#   add_model(bag_model_class) %>%
+#   add_recipe(recipe(Genre ~ ., data = svm_training_class))
+# 
+# svm_training_class$Genre <- as.factor(svm_training_class$Genre)
+# 
+# folds <- vfold_cv(svm_training_class, v = 3, strata = Genre)
+# 
+# # Grid of hyperparameters
+# grid_vals <- grid_regular(
+#   min_n(range = c(2, 10)),
+#   tree_depth(range = c(1, 10)),
+#   cost_complexity(range = c(0, 1)),
+#   levels = 4)
+# 
+# library(dplyr)
+# 
+# folds %>%
+#   mutate(class_counts = map(splits, ~table(analysis(.x)$Genre))) %>%
+#   pull(class_counts)
+# 
+# tuned_results <- tune_grid(
+#   workflow_spec,
+#   resamples = folds,
+#   grid = grid_vals,
+#   metrics = metric_set(accuracy)
+# )
+# 
+# best_params <- select_best(tuned_results)
+# best_params
+# 
+# spec_bagged_tune <- bag_tree(min_n = 7 , #minimum number of observations for split
+#                              tree_depth = 4, #max tree depth
+#                              cost_complexity = 4.64, #regularization parameter
+#                              class_cost = NULL)  %>% #for output class imbalance adjustment (binary data only)
+#   set_mode("classification") %>% #can set to regression for numeric prediction
+#   set_engine("rpart", times=100) #times = # OF ENSEMBLE MEMBERS IN FOREST
+# spec_bagged_tune
+# 
+# bagged_forest_tune <- spec_bagged_tune %>%
+#   fit(formula = fmla, data = svm_training_class)
+# print(bagged_forest_tune)
+# 
+# #GENERATE IN-SAMPLE PREDICTIONS ON THE TRAIN SET AND COMBINE WITH TRAIN DATA
+# pred_class_bftune_in <- predict(bagged_forest_tune, new_data = svm_training_class, type="factor") %>%
+#   bind_cols(svm_training_class) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+# 
+# #GENERATE OUT-OF-SAMPLE PREDICTIONS ON THE TEST SET AND COMBINE WITH TEST DATA
+# pred_class_bftune_out <- predict(bagged_forest_tune, new_data = svm_testing_class, type="factor") %>%
+#   bind_cols(svm_testing_class) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+# 
+# rmse_bftune_in <- rmse(pred_class_bftune_in, truth = Genre, estimate = .pred)
+# rmse_bftune_out <- rmse(pred_class_bftune_out, truth = Genre, estimate = .pred)
+
+# ===== Random Forest bc tuning the bagged tree is not working :( =========
+
+library(ranger)
+library(vip)
+library(baguette)
+library(tidymodels)
 library(caret)
 
-spec_bagged <- bag_tree(min_n = 20 , #minimum number of observations for split
-                        tree_depth = 30, #max tree depth
-                        cost_complexity = 0.01, #regularization parameter
-                        class_cost = NULL)  %>% #for output class imbalance adjustment (binary data only)
+spec_rf <- rand_forest(min_n = 20 , #minimum number of observations for split
+                       trees = 100, #of ensemble members (trees in forest)
+                       mtry = 2)  %>% #number of variables to consider at each split
   set_mode("classification") %>% #can set to regression for numeric prediction
-  set_engine("rpart", times=100) #times = # OF ENSEMBLE MEMBERS IN FOREST
-spec_bagged
+  set_engine("ranger") #alternative engine / package: randomForest
+spec_rf
 
-#FITTING THE MODEL
-set.seed(123)
-#MODEL DESCRIPTION:
 fmla <- Genre ~.
 
-bagged_forest <- spec_bagged %>%
-  fit(formula = fmla, data = svm_training)
-print(bagged_forest)
+#FITTING THE RF MODEL
+set.seed(123) #NEED TO SET SEED WHEN FITTING OR BOOTSTRAPPED SAMPLES WILL CHANGE
+random_forest <- spec_rf %>%
+  fit(formula = fmla, data = svm_training_class) #%>%
+print(random_forest)
 
-#GENERATE IN-SAMPLE PREDICTIONS ON THE TRAIN SET AND COMBINE WITH TRAIN DATA
-pred_class_bf_in <- predict(bagged_forest, new_data = svm_training_class, type="factor") %>%
-  bind_cols(svm_training_class) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+#RANKING VARIABLE IMPORTANCE (CAN BE DONE WITH OTHER MODELS AS WELL)
+set.seed(123) #NEED TO SET SEED WHEN FITTING OR BOOTSTRAPPED SAMPLES WILL CHANGE
+rand_forest(min_n = 20 , #minimum number of observations for split
+            trees = 100, #of ensemble members (trees in forest)
+            mtry = 2)  %>% #number of variables to consider at each split
+  set_mode("classification") %>%
+  set_engine("ranger", importance = "impurity") %>%
+  fit(fmla, data = svm_training_class) %>%
+  vip() #FROM VIP PACKAGE - ONLY WORKS ON RANGER FIT DIRECTLY
 
-#GENERATE OUT-OF-SAMPLE PREDICTIONS ON THE TEST SET AND COMBINE WITH TEST DATA
-pred_class_bf_out <- predict(bagged_forest, new_data = svm_testing_class, type="factor") %>%
-  bind_cols(svm_testing_class) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+# TUNING RANDOM FOREST
 
-# TUNING BAGGED TREE ------------------
+rf_recipe <- recipe(Genre ~ ., data = svm_training_class)
 
-#BLANK TREE SPECIFICATION FOR TUNING
+rf_model <- rand_forest(
+  mtry = tune(),           # number of variables randomly sampled at each split
+  min_n = tune(),          # minimal node size
+  trees = 500              # number of trees to build
+) %>%
+  set_engine("ranger", importance = "impurity") %>%
+  set_mode("classification")
 
-bag_model <- bag_tree(min_n = tune() , #minimum number of observations for split
-                      tree_depth = tune(), #max tree depth
-                      cost_complexity = tune(), #regularization parameter
-                      class_cost = NULL)  %>% #for output class imbalance adjustment (binary data only)
-  set_mode("classification") %>% #can set to regression for numeric prediction
-  set_engine("rpart", times=100) #times = # OF ENSEMBLE MEMBERS IN FOREST
-bag_model
+rf_wf <- workflow() %>%
+  add_recipe(rf_recipe) %>%
+  add_model(rf_model)
 
-workflow_spec <- workflow() %>%
-  add_model(bag_model) %>%
-  add_recipe(recipe(Gross ~ ., data = svm_training_class))
+set.seed(123)
+folds <- vfold_cv(svm_training_class, v = 5, strata = Genre)
 
-folds <- vfold_cv(svm_training_class, v = 5)
+# How many predictors do you have?
+n_predictors <- ncol(svm_training_class) - 1  # subtract 1 for the response
 
-# Grid of hyperparameters
-grid_vals <- grid_regular(
-  min_n(range = c(2, 10)),
-  tree_depth(range = c(1, 10)),
-  cost_complexity(range = c(0, 1)),
-  levels = 4)
+grid_vals <- grid_random(
+  mtry(range = c(1, n_predictors)),
+  min_n(range = c(2, 20)),
+  size = 20
+)
 
+set.seed(234)
 tuned_results <- tune_grid(
-  workflow_spec,
+  rf_wf,
   resamples = folds,
   grid = grid_vals,
-  metrics = metric_set(rmse)
+  metrics = metric_set(accuracy)
 )
 
 best_params <- select_best(tuned_results)
 best_params
 
-spec_bagged_tune <- bag_tree(min_n = 7 , #minimum number of observations for split
-                             tree_depth = 4, #max tree depth
-                             cost_complexity = 4.64, #regularization parameter
-                             class_cost = NULL)  %>% #for output class imbalance adjustment (binary data only)
+spec_rf_tune <- rand_forest(min_n = 18 , #minimum number of observations for split
+                       trees = 100, #of ensemble members (trees in forest)
+                       mtry = 2)  %>% #number of variables to consider at each split
   set_mode("classification") %>% #can set to regression for numeric prediction
-  set_engine("rpart", times=100) #times = # OF ENSEMBLE MEMBERS IN FOREST
-spec_bagged_tune
+  set_engine("ranger") #alternative engine / package: randomForest
+spec_rf_tune
 
-bagged_forest_tune <- spec_bagged_tune %>%
-  fit(formula = fmla, data = svm_training_class)
-print(bagged_forest_tune)
+fmla <- Genre ~.
+
+#FITTING THE RF MODEL
+set.seed(123) #NEED TO SET SEED WHEN FITTING OR BOOTSTRAPPED SAMPLES WILL CHANGE
+random_forest_tune <- spec_rf_tune %>%
+  fit(formula = fmla, data = svm_training_class) #%>%
+print(random_forest_tune)
+
+#RANKING VARIABLE IMPORTANCE (CAN BE DONE WITH OTHER MODELS AS WELL)
+set.seed(123) #NEED TO SET SEED WHEN FITTING OR BOOTSTRAPPED SAMPLES WILL CHANGE
+rand_forest(min_n = 18 , #minimum number of observations for split
+            trees = 100, #of ensemble members (trees in forest)
+            mtry = 2)  %>% #number of variables to consider at each split
+  set_mode("classification") %>%
+  set_engine("ranger", importance = "impurity") %>%
+  fit(fmla, data = svm_training_class) %>%
+  vip() #FROM VIP PACKAGE - ONLY WORKS ON RANGER FIT DIRECTLY
 
 #GENERATE IN-SAMPLE PREDICTIONS ON THE TRAIN SET AND COMBINE WITH TRAIN DATA
-pred_class_bftune_in <- predict(bagged_forest_tune, new_data = svm_training_class, type="factor") %>%
+pred_class_rf_tune_in <- predict(random_forest_tune, new_data = svm_training_class, type="class") %>%
   bind_cols(svm_training_class) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
 
+#GENERATE IN-SAMPLE CONFUSION MATRIX AND DIAGNOSTICS
+confusion <- table(pred_class_rf_tune_in$.pred_class, pred_class_rf_tune_in$Genre)
+confusionMatrix(confusion) #FROM CARET PACKAGE
+
 #GENERATE OUT-OF-SAMPLE PREDICTIONS ON THE TEST SET AND COMBINE WITH TEST DATA
-pred_class_bftune_out <- predict(bagged_forest_tune, new_data = svm_testing_class, type="factor") %>%
+pred_class_rf_tune_out <- predict(random_forest_tune, new_data = svm_testing_class, type="class") %>%
   bind_cols(svm_testing_class) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
 
-rmse_bftune_in <- rmse(pred_class_bftune_in, truth = Genre, estimate = .pred)
-rmse_bftune_out <- rmse(pred_class_bftune_out, truth = Genre, estimate = .pred)
+#GENERATE OUT-OF-SAMPLE CONFUSION MATRIX AND DIAGNOSTICS
+confusion <- table(pred_class_rf_tune_out$.pred_class, pred_class_rf_tune_out$Genre)
+confusionMatrix(confusion) #FROM CARET PACKAGE
 
-# ====== 9d RMSE table ==========================================================
+# ====== 9d validation partition ==========================================================
 
-TABLE_MULTIVAR_RMSE <- as.table(matrix(c(RMSE_MT0_In, RMSE_MT1_In, ridge_E_IN, rmse_svm_in, rmse_tree_in$.estimate, rmse_bftune_in$.estimate, RMSE_MT0_Out, RMSE_MT1_Out, ridge_E_OUT, rmse_svm_out, rmse_tree_out$.estimate, rmse_bftune_out$.estimate), ncol=6, byrow=TRUE))
-colnames(TABLE_MULTIVAR_RMSE) <- c('SVM', 'TREE', 'BAGGED TREE')
-rownames(TABLE_MULTIVAR_RMSE) <- c('RMSE_IN', 'RMSE_OUT')
-TABLE_MULTIVAR_RMSE #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
 
 
 >>>>>>> cd36cdca5813e76487c4c7f475779d9808290474
