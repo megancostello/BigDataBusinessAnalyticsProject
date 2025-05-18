@@ -516,6 +516,7 @@ library(e1071) #SVM LIBRARY
 
 svm_training <- Training_Partition[, c("Gross", "IMDB_Rating", "budget", "budget2")]
 svm_testing <- Testing_Partition[, c("Gross", "IMDB_Rating", "budget", "budget2")]
+svm_validating <- Validation_Partition[, c("Gross", "IMDB_Rating", "budget", "budget2")]
 # svm_training$Gross <- log(svm_training$Gross)
 # svm_training$budget <- log(svm_training$budget)
 # svm_training$budget2 <- log(svm_training$budget2)
@@ -612,7 +613,6 @@ reg_tree$fit %>%
 
 plotcp(reg_tree$fit)
 
-<<<<<<< HEAD
 # ====== OLD MULTIVARIATE MOVED FROM ABOVE DOWN HERE ===================================
 #================================================================================
 
@@ -663,7 +663,7 @@ y_test <- holdout[, 1]  # True values for the test set
 pred_test <- predict(ridge_model, newx = X_test)
 E_OUT <- sqrt(mean((y_test - pred_test)^2))  # RMSE for test data
 cat("E_OUT (RMSE for test data):", E_OUT, "\n")
-=======
+
 #GENERATE PREDICTIONS AND COMBINE WITH TEST SET
 pred_reg <- predict(reg_tree, new_data = svm_testing) %>%
   bind_cols(svm_testing)
@@ -821,8 +821,6 @@ colnames(TABLE_MULTIVAR_RMSE) <- c('LINEAR', 'RIDGE', 'NONLINEAR', 'SVM', 'TREE'
 rownames(TABLE_MULTIVAR_RMSE) <- c('RMSE_IN', 'RMSE_OUT')
 TABLE_MULTIVAR_RMSE #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
 
-<<<<<<< HEAD
->>>>>>> 2e459e5423331715152fedebb876d14e9a57c508
 #=======
 
 # ====== 8 binary classification ================================
@@ -936,14 +934,22 @@ library(e1071) #SVM LIBRARY
 
 svm_training_class <- Training_Partition[, c("Genre", "Gross", "IMDB_Rating", "budget", "budget2")]
 svm_testing_class <- Testing_Partition[, c("Genre", "Gross", "IMDB_Rating", "budget", "budget2")]
+svm_validating_class <- Validation_Partition[, c("Genre", "Gross", "IMDB_Rating", "budget", "budget2")]
+
+# remove the one music genre movie bc it does not appear in training/testing and causes error
+svm_validating_class <- svm_validating_class[svm_validating_class$Genre != "Music", ]
 
 # Convert the genre variable to a factor
 svm_training_class$Genre <- as.factor(svm_training_class$Genre)
 svm_testing_class$Genre <- as.factor(svm_testing_class$Genre)
+svm_validating_class$Genre <- as.factor(svm_validating_class$Genre)
+
 
 # Check the factor levels
 levels(svm_training_class$Genre)
 levels(svm_testing_class$Genre)
+levels(svm_validating_class$Genre)
+
 
 # Convert the factor genre into numeric
 # svm_training_class$Genre <- as.numeric(svm_training_class$Genre)
@@ -1008,6 +1014,7 @@ print(SVM_Model_class_tuned) #DIAGNOSTIC SUMMARY
 
 in_class_svm_tuned_accuracy <- mean(unname(predict(SVM_Model_class_tuned, svm_training_class))==svm_training_class$Genre)
 out_class_svm_tuned_accuracy <- mean(unname(predict(SVM_Model_class_tuned, svm_testing_class))==svm_testing_class$Genre)
+val_class_svm_tuned_accuracy <- mean(unname(predict(SVM_Model_class_tuned, svm_validating_class))==svm_validating_class$Genre)
 
 
 #GENERATE PREDICTIONS 
@@ -1015,6 +1022,8 @@ preds_svm_class_in <- predict(SVM_Model_class_tuned, svm_training_class)%>%
   bind_cols(svm_training_class)
 preds_svm_class_out <- predict(SVM_Model_class_tuned, svm_testing_class)%>%
   bind_cols(svm_testing_class)
+preds_svm_class_val <- predict(SVM_Model_class_tuned, svm_validating_class)%>%
+  bind_cols(svm_validating_class)
 
 # Function to compute RMSE manually
 rmse_manual <- function(actual, predicted) {
@@ -1024,10 +1033,26 @@ rmse_manual <- function(actual, predicted) {
 rmse_svm_class_in <- rmse_manual(preds_svm_class_in$Genre, preds_svm_class_in$...1)
 rmse_svm_class_out <- rmse_manual(preds_svm_class_out$Genre, preds_svm_class_out$...1)
 
+# in error
+confusion_svm_class_in <- table(preds_svm_class_in$...1, preds_svm_class_in$Genre)
+confMatSVMIn <- confusionMatrix(confusion_svm_class_in) #FROM CARET PACKAGE
+
+accuracy_in_svm <- confMatSVMIn$overall['Accuracy']
+print(accuracy_in_svm)
+
+# out error
+confusion_svm_class_val_tuned <- table(preds_svm_class_val$...1, preds_svm_class_val$Genre)
+confusion_svm_tuned <- confusionMatrix(confusion_svm_class_val_tuned) #FROM CARET PACKAGE
+
+accuracy_val_svm <- confusion_svm_tuned$overall['Accuracy']
+print(accuracy_val_svm)
+
 # ====== 9b regression tree ==========================================================
 
 library(tidymodels) 
 library(rpart.plot)
+library(caret)
+library(yardstick)
 #SPECIFYING THE regression TREE MODEL
 
 reg_spec_class <- decision_tree(min_n = 20 , #minimum number of observations for split
@@ -1039,7 +1064,7 @@ print(reg_spec_class)
 
 #ESTIMATING THE MODEL 
 class_fmla <- Genre ~ .
-class_tree <- reg_spec %>%
+class_tree <- reg_spec_class %>%
   fit(formula = class_fmla, data = svm_training_class)
 print(class_tree)
 
@@ -1062,8 +1087,11 @@ pred_class_reg_numeric$.pred_class <- as.numeric(pred_class_reg_numeric$.pred_cl
 tree_class_rmse_out <- rmse(pred_class_reg_numeric, estimate=.pred_class, truth=Genre)
 
 #GENERATE OUT-OF-SAMPLE CONFUSION MATRIX AND DIAGNOSTICS
-confusion <- table(pred_class_reg$.pred_class, pred_class_reg$Genre)
-confusionMatrix(confusion) #FROM CARET PACKAGE
+confusion_tree <- table(pred_class_reg$.pred_class, pred_class_reg$Genre)
+confMatTree <- confusionMatrix(confusion_tree) #FROM CARET PACKAGE
+
+accuracy_tree <- confMatTree$overall['Accuracy']
+print(accuracy_tree)
 
 # TUNING TREE ------------------
 
@@ -1113,9 +1141,17 @@ plotcp(class_tree_tune$fit)
 pred_class_in_tune <- predict(class_tree_tune, new_data = svm_training_class) %>%
   bind_cols(svm_training_class)
 
+confusion_in_tunetree <- table(pred_class_in_tune$.pred_class, pred_class_in_tune$Genre)
+confMatInTuneTree <- confusionMatrix(confusion_in_tunetree) #FROM CARET PACKAGE
+
+accuracy_in_tree <- confMatInTuneTree$overall['Accuracy']
+print(accuracy_in_tree)
+
 #GENERATE PREDICTIONS AND COMBINE WITH TEST SET
 pred_class_out_tune <- predict(class_tree_tune, new_data = svm_testing_class) %>%
   bind_cols(svm_testing_class)
+pred_class_val_tune <- predict(class_tree_tune, new_data = svm_validating_class) %>%
+  bind_cols(svm_validating_class)
 
 #OUT-OF-SAMPLE ERROR ESTIMATES FROM yardstick OR ModelMetrics PACKAGE
 rmse_tree_in <- rmse(pred_class_in_tune, estimate=.pred_class, truth=Genre)
@@ -1124,6 +1160,12 @@ rmse_tree_out <- rmse(pred_class_out_tune, estimate=.pred_class, truth=Genre)
 #GENERATE OUT-OF-SAMPLE CONFUSION MATRIX AND DIAGNOSTICS
 confusion_class_tuned <- table(pred_class_out_tune$.pred_class, pred_class_out_tune$Genre)
 confusionMatrix(confusion_class_tuned) #FROM CARET PACKAGE
+
+confusion_class_val_tuned <- table(pred_class_val_tune$.pred_class, pred_class_val_tune$Genre)
+confusion_tree_tuned <- confusionMatrix(confusion_class_val_tuned) #FROM CARET PACKAGE
+
+accuracy_val_tree <- confusion_tree_tuned$overall['Accuracy']
+print(accuracy_val_tree)
 
 # # ====== 9c tree-based ensemble model ==========================================================
 
@@ -1338,8 +1380,11 @@ pred_class_rf_tune_in <- predict(random_forest_tune, new_data = svm_training_cla
   bind_cols(svm_training_class) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
 
 #GENERATE IN-SAMPLE CONFUSION MATRIX AND DIAGNOSTICS
-confusion <- table(pred_class_rf_tune_in$.pred_class, pred_class_rf_tune_in$Genre)
-confusionMatrix(confusion) #FROM CARET PACKAGE
+confusion_in_randfor <- table(pred_class_rf_tune_in$.pred_class, pred_class_rf_tune_in$Genre)
+confMat_in_randfor <- confusionMatrix(confusion_in_randfor) #FROM CARET PACKAGE
+
+accuracy_in_randfor <- confMat_in_randfor$overall['Accuracy']
+print(accuracy_in_randfor)
 
 #GENERATE OUT-OF-SAMPLE PREDICTIONS ON THE TEST SET AND COMBINE WITH TEST DATA
 pred_class_rf_tune_out <- predict(random_forest_tune, new_data = svm_testing_class, type="class") %>%
@@ -1349,13 +1394,29 @@ pred_class_rf_tune_out <- predict(random_forest_tune, new_data = svm_testing_cla
 confusion <- table(pred_class_rf_tune_out$.pred_class, pred_class_rf_tune_out$Genre)
 confusionMatrix(confusion) #FROM CARET PACKAGE
 
+#GENERATE OUT-OF-SAMPLE PREDICTIONS ON THE TEST SET AND COMBINE WITH TEST DATA
+pred_class_rf_tune_val <- predict(random_forest_tune, new_data = svm_validating_class, type="class") %>%
+  bind_cols(svm_validating_class) #ADD CLASS PREDICTIONS DIRECTLY TO TEST DATA
+
+#GENERATE OUT-OF-SAMPLE CONFUSION MATRIX AND DIAGNOSTICS
+confusion_randfor_val <- table(pred_class_rf_tune_val$.pred_class, pred_class_rf_tune_val$Genre)
+confMatRandFor <- confusionMatrix(confusion_randfor_val) #FROM CARET PACKAGE
+
+accuracy_val_randfor <- confMatRandFor$overall['Accuracy']
+print(accuracy_val_randfor)
+
 # ====== 9d validation partition ==========================================================
 
+TABLE_MULTICLASS_ACCURACY <- as.table(matrix(c(accuracy_in_svm, accuracy_in_tree, accuracy_in_randfor, accuracy_val_svm, accuracy_val_tree, accuracy_val_randfor), ncol=3, byrow=TRUE))
+colnames(TABLE_MULTICLASS_ACCURACY) <- c('SVM', 'TREE', 'RANDOM FOREST')
+rownames(TABLE_MULTICLASS_ACCURACY) <- c('ACCURACY IN', 'ACCURACY OUT')
+TABLE_MULTICLASS_ACCURACY #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
 
-
->>>>>>> cd36cdca5813e76487c4c7f475779d9808290474
-
-
+# using 1-accuracy for error
+TABLE_MULTICLASS_ACCURACYERROR <- as.table(matrix(c(1-accuracy_in_svm, 1-accuracy_in_tree, 1-accuracy_in_randfor, 1-accuracy_val_svm, 1-accuracy_val_tree, 1-accuracy_val_randfor), ncol=3, byrow=TRUE))
+colnames(TABLE_MULTICLASS_ACCURACYERROR) <- c('SVM', 'TREE', 'RANDOM FOREST')
+rownames(TABLE_MULTICLASS_ACCURACYERROR) <- c('ACCURACY ERROR IN', 'ACCURACY ERROR OUT')
+TABLE_MULTICLASS_ACCURACYERROR #REPORT OUT-OF-SAMPLE ERRORS FOR ALL HYPOTHESIS
 
 
 
